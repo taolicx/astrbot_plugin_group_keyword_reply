@@ -1,5 +1,5 @@
 name: GroupKeywordReply
 author: Codex
 description: 按规则匹配群消息并自动发送预设回复
-version: 1.2.1
+version: 1.3.0
 repo: https://github.com/taolicx/astrbot_plugin_group_keyword_reply

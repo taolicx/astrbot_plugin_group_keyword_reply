@@ -253,6 +253,10 @@
           <textarea class="rule-reply"></textarea>
         </label>
         <label>
+          排除关键词
+          <input class="rule-exclude-keywords" type="text" placeholder="多个关键词用逗号分隔；同一条消息同时包含它们时不回复">
+        </label>
+        <label>
           生效群
           <input class="rule-groups" type="text" placeholder="多个群号用逗号分隔；留空表示全部群">
         </label>
@@ -305,6 +309,7 @@
         name: card.querySelector('.rule-name').value.trim(),
         enabled: card.querySelector('.rule-enabled').checked,
         groups: card.querySelector('.rule-groups').value.split(/[,，]/).map(v => v.trim()).filter(Boolean),
+        exclude_keywords: card.querySelector('.rule-exclude-keywords').value.split(/[,，]/).map(v => v.trim()).filter(Boolean),
         match_type: card.querySelector('.rule-match-type').value,
         pattern: card.querySelector('.rule-pattern').value.trim(),
         reply: card.querySelector('.rule-reply').value.trim(),
@@ -325,6 +330,7 @@
       node.querySelector('.rule-pattern').value = rule.pattern || '';
       node.querySelector('.rule-reply').value = rule.reply || '';
       node.querySelector('.rule-groups').value = Array.isArray(rule.groups) ? rule.groups.join(',') : '';
+      node.querySelector('.rule-exclude-keywords').value = Array.isArray(rule.exclude_keywords) ? rule.exclude_keywords.join(',') : '';
       node.querySelector('.rule-cooldown').value = rule.cooldown_seconds ?? 0;
       node.querySelector('.rule-max-reply-count').value = rule.max_reply_count ?? 0;
       node.querySelector('.rule-reply-count').value = rule.reply_count ?? 0;

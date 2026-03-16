@@ -22,6 +22,7 @@ class ReplyRule:
     reply: str
     match_type: str
     groups: list[str]
+    exclude_keywords: list[str]
     ignore_case: bool
     continue_after_reply: bool
     cooldown_seconds: float
@@ -40,7 +41,7 @@ class SafeFormatDict(dict[str, str]):
     "GroupKeywordReply",
     "Codex",
     "按规则匹配群消息并自动发送预设回复",
-    "1.2.1",
+    "1.3.0",
     "https://github.com/taolicx/astrbot_plugin_group_keyword_reply",
 )
 class GroupKeywordReplyPlugin(Star):
@@ -231,6 +232,7 @@ class GroupKeywordReplyPlugin(Star):
                 item.get("continue_after_reply", False), False
             )
             groups = self._parse_groups(item.get("groups", []))
+            exclude_keywords = self._parse_groups(item.get("exclude_keywords", []))
 
             try:
                 cooldown_seconds = max(float(item.get("cooldown_seconds", 0)), 0.0)
@@ -270,6 +272,7 @@ class GroupKeywordReplyPlugin(Star):
                     reply=reply,
                     match_type=match_type,
                     groups=groups,
+                    exclude_keywords=exclude_keywords,
                     ignore_case=ignore_case,
                     continue_after_reply=continue_after_reply,
                     cooldown_seconds=cooldown_seconds,
@@ -332,6 +335,14 @@ class GroupKeywordReplyPlugin(Star):
         if not rule.groups:
             return True
         return group_id in rule.groups
+
+    def _has_excluded_keyword(self, rule: ReplyRule, text: str) -> bool:
+        source = text.casefold() if rule.ignore_case else text
+        for keyword in rule.exclude_keywords:
+            target = keyword.casefold() if rule.ignore_case else keyword
+            if target and target in source:
+                return True
+        return False
 
     def _match_rule(self, rule: ReplyRule, text: str) -> re.Match[str] | bool:
         if rule.match_type == "regex":
@@ -482,8 +493,11 @@ class GroupKeywordReplyPlugin(Star):
             lines.append("规则列表:")
             for rule in rules[:10]:
                 group_text = ",".join(rule.groups) if rule.groups else "全部群"
+                exclude_text = ",".join(rule.exclude_keywords) if rule.exclude_keywords else "无"
                 limit_text = "不限" if rule.max_reply_count <= 0 else f"{rule.reply_count}/{rule.max_reply_count}"
-                lines.append(f"- {rule.name} [{rule.match_type}] -> {group_text} | 次数 {limit_text}")
+                lines.append(
+                    f"- {rule.name} [{rule.match_type}] -> {group_text} | 排除 {exclude_text} | 次数 {limit_text}"
+                )
         yield event.plain_result("\n".join(lines)).use_t2i(False)
 
     @keyword_reply.command("列表")
@@ -502,10 +516,19 @@ class GroupKeywordReplyPlugin(Star):
             pattern = str(item.get("pattern") or "").strip()
             enabled = self._parse_bool(item.get("enabled", True), True)
             groups = self._parse_groups(item.get("groups", []))
+            excludes = self._parse_groups(item.get("exclude_keywords", []))
+            try:
+                reply_count = max(int(item.get("reply_count", 0)), 0)
+            except (TypeError, ValueError):
+                reply_count = 0
+            try:
+                max_reply_count = max(int(item.get("max_reply_count", 0)), 0)
+            except (TypeError, ValueError):
+                max_reply_count = 0
+            limit_text = f"{reply_count}/{max_reply_count}" if max_reply_count > 0 else f"{reply_count}/不限"
             lines.append(
                 f"- {name} | {'开' if enabled else '关'} | {match_type} | {pattern} | "
-                f"{','.join(groups) if groups else '全部群'} | "
-                f"{int(item.get('reply_count', 0))}/{int(item.get('max_reply_count', 0) or 0) if int(item.get('max_reply_count', 0) or 0) > 0 else '不限'}"
+                f"{','.join(groups) if groups else '全部群'} | 排除 {','.join(excludes) if excludes else '无'} | {limit_text}"
             )
         yield event.plain_result("\n".join(lines)).use_t2i(False)
 
@@ -518,7 +541,7 @@ class GroupKeywordReplyPlugin(Star):
         parts = [part.strip() for part in text.split("|")]
         if len(parts) < 4:
             yield event.plain_result(
-                "用法：/关键词回复 添加 名称 | keyword/exact/regex | 匹配内容 | 回复内容"
+                "用法：/关键词回复 添加 名称 | keyword/exact/regex | 匹配内容 | 回复内容 | 群号1,群号2 | 开 | 次数上限 | 排除词1,排除词2"
             )
             return
 
@@ -527,12 +550,13 @@ class GroupKeywordReplyPlugin(Star):
         enabled = self._parse_on_off(parts[5]) if len(parts) >= 6 else True
         enabled = True if enabled is None else enabled
         max_reply_count = 0
-        if len(parts) >= 7:
+        if len(parts) >= 7 and str(parts[6]).strip():
             try:
                 max_reply_count = max(int(parts[6]), 0)
             except (TypeError, ValueError):
                 yield event.plain_result("最大回复次数必须是数字，0 表示不限。")
                 return
+        exclude_keywords = self._parse_groups(parts[7]) if len(parts) >= 8 else []
 
         match_type = self._normalize_match_type(match_type)
         if match_type == "regex":
@@ -553,6 +577,7 @@ class GroupKeywordReplyPlugin(Star):
                 "name": name,
                 "enabled": enabled,
                 "groups": groups,
+                "exclude_keywords": exclude_keywords,
                 "match_type": match_type,
                 "pattern": pattern,
                 "reply": reply,
@@ -636,6 +661,33 @@ class GroupKeywordReplyPlugin(Star):
 
         self._save_rule_items(items)
         yield event.plain_result(f"规则 {name} 的回复已更新。")
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @keyword_reply.command("排除")
+    async def keyword_reply_set_excludes(
+        self, event: AstrMessageEvent, name: str = "", excludes: GreedyStr = ""
+    ) -> AsyncGenerator[MessageEventResult, None]:
+        name = str(name or "").strip()
+        if not name:
+            yield event.plain_result("用法：/关键词回复 排除 规则名 排除词1,排除词2")
+            return
+
+        exclude_list = self._parse_groups(excludes)
+        items = self._raw_rule_items()
+        changed = False
+        for item in items:
+            if str(item.get("name") or "").strip() == name:
+                item["exclude_keywords"] = exclude_list
+                changed = True
+                break
+        if not changed:
+            yield event.plain_result(f"未找到规则：{name}")
+            return
+
+        self._save_rule_items(items)
+        yield event.plain_result(
+            f"规则 {name} 的排除关键词已更新：{','.join(exclude_list) if exclude_list else '无'}"
+        )
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @keyword_reply.command("次数")
@@ -770,6 +822,7 @@ class GroupKeywordReplyPlugin(Star):
             "/关键词回复 删除 规则名\n"
             "/关键词回复 开关 规则名 开|关\n"
             "/关键词回复 回复 规则名 新回复内容\n"
+            "/关键词回复 排除 规则名 排除词1,排除词2\n"
             "/关键词回复 次数 规则名 次数上限\n"
             "/关键词回复 重置次数 规则名\n"
             "/关键词回复 群 规则名 群号1,群号2\n"
@@ -804,6 +857,9 @@ class GroupKeywordReplyPlugin(Star):
 
             match_result = self._match_rule(rule, message_text)
             if not match_result:
+                continue
+
+            if self._has_excluded_keyword(rule, message_text):
                 continue
 
             if self._is_in_cooldown(group_id, rule):
