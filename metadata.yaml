@@ -1,5 +1,5 @@
 name: GroupKeywordReply
 author: Codex
 description: Automatically match configured content in groups and send configured replies
-version: 1.0.0
-repo: https://github.com/AstrBotDevs/AstrBot
+version: 1.0.1
+repo: https://github.com/taolicx/astrbot_plugin_group_keyword_reply

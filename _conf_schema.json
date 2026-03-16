@@ -1,21 +1,21 @@
 {
   "enabled": {
-    "description": "启用插件",
+    "description": "Enable Plugin",
     "type": "bool",
-    "hint": "关闭后插件不会处理任何群消息。",
+    "hint": "When disabled, the plugin will not process any group messages.",
     "default": true
   },
   "ignore_self_messages": {
-    "description": "忽略机器人自身消息",
+    "description": "Ignore Bot Self Messages",
     "type": "bool",
-    "hint": "建议保持开启，避免机器人发送的消息再次触发规则形成循环。",
+    "hint": "Recommended to avoid reply loops triggered by the bot's own messages.",
     "default": true
   },
   "rules_json": {
-    "description": "回复规则 JSON",
+    "description": "Reply Rules JSON",
     "type": "text",
-    "hint": "填写 JSON 数组。每项支持：name、enabled、groups、match_type(keyword/exact/regex)、pattern、reply、ignore_case、continue_after_reply、cooldown_seconds、priority。groups 为空表示全部群。reply 支持变量：{message} {sender_id} {sender_name} {group_id} {rule_name}，正则还支持 {match} {g1} 或命名分组变量。",
-    "default": "[\n  {\n    \"name\": \"广告提醒\",\n    \"enabled\": true,\n    \"groups\": [\"123456789\"],\n    \"match_type\": \"keyword\",\n    \"pattern\": \"加群\",\n    \"reply\": \"请勿发送加群广告。\",\n    \"ignore_case\": true,\n    \"continue_after_reply\": false,\n    \"cooldown_seconds\": 10,\n    \"priority\": 1\n  },\n  {\n    \"name\": \"欢迎词\",\n    \"enabled\": false,\n    \"groups\": [],\n    \"match_type\": \"regex\",\n    \"pattern\": \"^我是(?P<name>.+)$\",\n    \"reply\": \"欢迎你，{name}。\",\n    \"ignore_case\": true,\n    \"continue_after_reply\": false,\n    \"cooldown_seconds\": 0,\n    \"priority\": 2\n  }\n]",
+    "hint": "JSON array. Each item supports name, enabled, groups, match_type(keyword/exact/regex), pattern, reply, ignore_case, continue_after_reply, cooldown_seconds, priority. Reply variables: {message} {sender_id} {sender_name} {group_id} {rule_name}. Regex also supports {match}, {g1}, or named groups.",
+    "default": "[\n  {\n    \"name\": \"ad-warning\",\n    \"enabled\": true,\n    \"groups\": [\"123456789\"],\n    \"match_type\": \"keyword\",\n    \"pattern\": \"代挂\",\n    \"reply\": \"本群禁止发布代挂广告，请遵守群规。\",\n    \"ignore_case\": true,\n    \"continue_after_reply\": false,\n    \"cooldown_seconds\": 10,\n    \"priority\": 1\n  },\n  {\n    \"name\": \"welcome-regex\",\n    \"enabled\": false,\n    \"groups\": [],\n    \"match_type\": \"regex\",\n    \"pattern\": \"^我是(?P<name>.+)$\",\n    \"reply\": \"收到，欢迎你 {name}。\",\n    \"ignore_case\": true,\n    \"continue_after_reply\": false,\n    \"cooldown_seconds\": 0,\n    \"priority\": 2\n  }\n]",
     "editor_mode": true,
     "editor_language": "json",
     "editor_theme": "vs-light"

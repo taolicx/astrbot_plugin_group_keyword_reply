@@ -1,63 +1,65 @@
-# AstrBot 群关键词自动回复插件
+# AstrBot Group Keyword Reply
 
-这个插件会监听群消息，在命中你配置的规则后，自动发送指定回复。
+Automatically match configured group messages and send configured replies.
 
-## 功能
+## Features
 
-- 仅处理群消息
-- 支持指定群号生效
-- 支持关键词匹配、完全匹配、正则匹配
-- 支持回复模板变量
-- 支持命中冷却，避免短时间重复刷屏
-- 支持命中后直接截断后续处理，或回复后继续交给其他插件/LLM
+- Group-only auto reply
+- Supports keyword, exact, and regex matching
+- Optional group whitelist per rule
+- Template variables in reply text
+- Cooldown per rule to avoid spam
+- Optional `continue_after_reply` to let other plugins or the LLM continue processing
 
-## 安装位置
+## Install
 
-当前目录已经是可直接加载的 AstrBot 插件目录：
+Place this plugin in:
 
 ```text
 .astrbot/data/plugins/astrbot_plugin_group_keyword_reply
 ```
 
-重启 AstrBot 或重新加载插件后即可生效。
+Then restart AstrBot or reload plugins.
 
-## 配置说明
+## Config
 
-核心配置项是 `rules_json`，它是一个 JSON 数组。每条规则支持以下字段：
+The main config field is `rules_json`. It must be a JSON array.
 
-- `name`：规则名称
-- `enabled`：是否启用
-- `groups`：生效群号列表，留空表示全部群
-- `match_type`：`keyword`、`exact`、`regex`
-- `pattern`：匹配内容
-- `reply`：命中后发送的回复文本
-- `ignore_case`：是否忽略大小写
-- `continue_after_reply`：是否在发送回复后继续让其他插件/LLM处理
-- `cooldown_seconds`：该规则在同一群内的冷却秒数
-- `priority`：优先级，数值越小越先匹配
+Each rule supports:
 
-## 回复模板变量
+- `name`: Rule name
+- `enabled`: Whether the rule is enabled
+- `groups`: List of group IDs. Empty means all groups
+- `match_type`: `keyword`, `exact`, or `regex`
+- `pattern`: Match content
+- `reply`: Reply text after a match
+- `ignore_case`: Whether matching ignores case
+- `continue_after_reply`: Whether processing should continue after replying
+- `cooldown_seconds`: Cooldown in the same group
+- `priority`: Lower number means higher priority
 
-`reply` 支持这些变量：
+## Reply Variables
 
-- `{message}`：原始消息文本
-- `{sender_id}`：发送者 ID
-- `{sender_name}`：发送者昵称
-- `{group_id}`：群号
-- `{rule_name}`：当前命中的规则名
+`reply` supports:
 
-如果 `match_type` 是 `regex`，还支持：
+- `{message}`: Original message text
+- `{sender_id}`: Sender ID
+- `{sender_name}`: Sender nickname
+- `{group_id}`: Group ID
+- `{rule_name}`: Current rule name
 
-- `{match}`：整段匹配内容
-- `{g1}`、`{g2}`：第 1、2 个捕获组
-- 命名分组，例如正则 `^我是(?P<name>.+)$` 可在回复里写 `{name}`
+If `match_type` is `regex`, it also supports:
 
-## 示例
+- `{match}`: Full matched text
+- `{g1}`, `{g2}`: Captured groups
+- Named groups, for example `{name}`
+
+## Example Rules
 
 ```json
 [
   {
-    "name": "广告提醒",
+    "name": "ad-warning",
     "enabled": true,
     "groups": ["123456789"],
     "match_type": "keyword",
@@ -69,9 +71,9 @@
     "priority": 1
   },
   {
-    "name": "新成员欢迎",
+    "name": "welcome-regex",
     "enabled": true,
-    "groups": ["123456789"],
+    "groups": [],
     "match_type": "regex",
     "pattern": "^我是(?P<name>.+)$",
     "reply": "收到，欢迎你 {name}。",
@@ -83,6 +85,6 @@
 ]
 ```
 
-## 命令
+## Command
 
-- `关键词回复状态`：查看插件是否启用以及当前加载的规则数量
+- `关键词回复状态`: Show whether the plugin is enabled and how many rules are loaded

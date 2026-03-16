@@ -32,8 +32,8 @@ class SafeFormatDict(dict[str, str]):
     "GroupKeywordReply",
     "Codex",
     "Automatically match configured group messages and send configured replies",
-    "1.0.0",
-    "https://github.com/AstrBotDevs/AstrBot",
+    "1.0.1",
+    "https://github.com/taolicx/astrbot_plugin_group_keyword_reply",
 )
 class GroupKeywordReplyPlugin(Star):
     def __init__(self, context: Any, config: dict[str, Any] | None = None) -> None:
