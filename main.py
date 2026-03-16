@@ -1,0 +1,310 @@
+import json
+import re
+import time
+from dataclasses import dataclass
+from typing import Any
+
+from astrbot.api import logger
+from astrbot.api.event import AstrMessageEvent, MessageChain, filter
+from astrbot.api.star import Star, register
+
+
+@dataclass(slots=True)
+class ReplyRule:
+    name: str
+    pattern: str
+    reply: str
+    match_type: str
+    groups: list[str]
+    ignore_case: bool
+    continue_after_reply: bool
+    cooldown_seconds: float
+    priority: int
+    compiled_pattern: re.Pattern[str] | None = None
+
+
+class SafeFormatDict(dict[str, str]):
+    def __missing__(self, key: str) -> str:
+        return "{" + key + "}"
+
+
+@register(
+    "GroupKeywordReply",
+    "Codex",
+    "Automatically match configured group messages and send configured replies",
+    "1.0.0",
+    "https://github.com/AstrBotDevs/AstrBot",
+)
+class GroupKeywordReplyPlugin(Star):
+    def __init__(self, context: Any, config: dict[str, Any] | None = None) -> None:
+        super().__init__(context)
+        self.context = context
+        self.config = config or {}
+        self._rules_cache_key = ""
+        self._rules_cache: list[ReplyRule] = []
+        self._last_trigger_at: dict[str, float] = {}
+
+    def _plugin_enabled(self) -> bool:
+        value = self.config.get("enabled", True)
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+    def _ignore_self_messages(self) -> bool:
+        value = self.config.get("ignore_self_messages", True)
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+    def _raw_rules(self) -> Any:
+        return self.config.get("rules_json", "[]")
+
+    def _make_rules_cache_key(self, raw_rules: Any) -> str:
+        if isinstance(raw_rules, str):
+            return raw_rules
+        try:
+            return json.dumps(raw_rules, ensure_ascii=False, sort_keys=True)
+        except TypeError:
+            return str(raw_rules)
+
+    def _parse_bool(self, value: Any, default: bool = False) -> bool:
+        if isinstance(value, bool):
+            return value
+        if value is None:
+            return default
+        return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+    def _parse_groups(self, value: Any) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return [str(item).strip() for item in value if str(item).strip()]
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return []
+            return [item.strip() for item in text.split(",") if item.strip()]
+        return [str(value).strip()]
+
+    def _normalize_match_type(self, value: Any) -> str:
+        match_type = str(value or "keyword").strip().lower()
+        aliases = {
+            "contains": "keyword",
+            "keyword": "keyword",
+            "exact": "exact",
+            "full": "exact",
+            "regex": "regex",
+            "re": "regex",
+        }
+        return aliases.get(match_type, "keyword")
+
+    def _load_rules(self) -> list[ReplyRule]:
+        raw_rules = self._raw_rules()
+        cache_key = self._make_rules_cache_key(raw_rules)
+        if cache_key == self._rules_cache_key:
+            return self._rules_cache
+
+        parsed_rules: list[dict[str, Any]]
+        if isinstance(raw_rules, list):
+            parsed_rules = [item for item in raw_rules if isinstance(item, dict)]
+        else:
+            text = str(raw_rules or "").strip()
+            if not text:
+                parsed_rules = []
+            else:
+                try:
+                    data = json.loads(text)
+                except json.JSONDecodeError as exc:
+                    logger.warning(f"GroupKeywordReply rules_json is invalid JSON: {exc}")
+                    self._rules_cache_key = cache_key
+                    self._rules_cache = []
+                    return self._rules_cache
+                if not isinstance(data, list):
+                    logger.warning("GroupKeywordReply rules_json must be a JSON array.")
+                    self._rules_cache_key = cache_key
+                    self._rules_cache = []
+                    return self._rules_cache
+                parsed_rules = [item for item in data if isinstance(item, dict)]
+
+        rules: list[ReplyRule] = []
+        for index, item in enumerate(parsed_rules):
+            enabled = self._parse_bool(item.get("enabled", True), True)
+            if not enabled:
+                continue
+
+            name = str(item.get("name") or f"rule_{index + 1}").strip()
+            pattern = str(item.get("pattern") or "").strip()
+            reply = str(item.get("reply") or "").strip()
+            if not pattern or not reply:
+                logger.warning(
+                    f"GroupKeywordReply skipped rule '{name}' because pattern or reply is empty."
+                )
+                continue
+
+            match_type = self._normalize_match_type(item.get("match_type", "keyword"))
+            ignore_case = self._parse_bool(item.get("ignore_case", True), True)
+            continue_after_reply = self._parse_bool(
+                item.get("continue_after_reply", False), False
+            )
+            groups = self._parse_groups(item.get("groups", []))
+
+            try:
+                cooldown_seconds = max(float(item.get("cooldown_seconds", 0)), 0.0)
+            except (TypeError, ValueError):
+                cooldown_seconds = 0.0
+
+            try:
+                priority = int(item.get("priority", index + 1))
+            except (TypeError, ValueError):
+                priority = index + 1
+
+            compiled_pattern: re.Pattern[str] | None = None
+            if match_type == "regex":
+                flags = re.IGNORECASE if ignore_case else 0
+                try:
+                    compiled_pattern = re.compile(pattern, flags)
+                except re.error as exc:
+                    logger.warning(
+                        f"GroupKeywordReply skipped regex rule '{name}' because it is invalid: {exc}"
+                    )
+                    continue
+
+            rules.append(
+                ReplyRule(
+                    name=name,
+                    pattern=pattern,
+                    reply=reply,
+                    match_type=match_type,
+                    groups=groups,
+                    ignore_case=ignore_case,
+                    continue_after_reply=continue_after_reply,
+                    cooldown_seconds=cooldown_seconds,
+                    priority=priority,
+                    compiled_pattern=compiled_pattern,
+                )
+            )
+
+        rules.sort(key=lambda item: item.priority)
+        self._rules_cache_key = cache_key
+        self._rules_cache = rules
+        return self._rules_cache
+
+    def _group_matches(self, rule: ReplyRule, group_id: str) -> bool:
+        if not rule.groups:
+            return True
+        return group_id in rule.groups
+
+    def _match_rule(self, rule: ReplyRule, text: str) -> re.Match[str] | bool:
+        if rule.match_type == "regex":
+            if rule.compiled_pattern is None:
+                return False
+            return rule.compiled_pattern.search(text) or False
+
+        source = text.casefold() if rule.ignore_case else text
+        pattern = rule.pattern.casefold() if rule.ignore_case else rule.pattern
+
+        if rule.match_type == "exact":
+            return source == pattern
+        return pattern in source
+
+    def _build_reply_text(
+        self,
+        rule: ReplyRule,
+        event: AstrMessageEvent,
+        original_text: str,
+        match_result: re.Match[str] | bool,
+    ) -> str:
+        values: SafeFormatDict = SafeFormatDict(
+            {
+                "rule_name": rule.name,
+                "message": original_text,
+                "sender_id": event.get_sender_id(),
+                "sender_name": event.get_sender_name(),
+                "group_id": event.get_group_id(),
+                "platform_name": event.get_platform_name(),
+                "platform_id": event.get_platform_id(),
+            }
+        )
+
+        if isinstance(match_result, re.Match):
+            values["match"] = match_result.group(0)
+            for idx, group in enumerate(match_result.groups(), start=1):
+                values[f"g{idx}"] = group or ""
+            for key, value in match_result.groupdict().items():
+                values[key] = value or ""
+
+        return rule.reply.format_map(values)
+
+    def _cooldown_key(self, group_id: str, rule_name: str) -> str:
+        return f"{group_id}:{rule_name}"
+
+    def _is_in_cooldown(self, group_id: str, rule: ReplyRule) -> bool:
+        if rule.cooldown_seconds <= 0:
+            return False
+        key = self._cooldown_key(group_id, rule.name)
+        last_trigger_at = self._last_trigger_at.get(key, 0.0)
+        return (time.time() - last_trigger_at) < rule.cooldown_seconds
+
+    def _mark_triggered(self, group_id: str, rule: ReplyRule) -> None:
+        if rule.cooldown_seconds <= 0:
+            return
+        self._last_trigger_at[self._cooldown_key(group_id, rule.name)] = time.time()
+
+    @filter.command("关键词回复状态")
+    async def keyword_reply_status(self, event: AstrMessageEvent) -> None:
+        rules = self._load_rules()
+        lines = [
+            f"插件启用: {'是' if self._plugin_enabled() else '否'}",
+            f"忽略机器人自身消息: {'是' if self._ignore_self_messages() else '否'}",
+            f"已加载规则数: {len(rules)}",
+        ]
+        if rules:
+            lines.append("规则列表:")
+            for rule in rules[:10]:
+                group_text = ",".join(rule.groups) if rule.groups else "全部群"
+                lines.append(f"- {rule.name} [{rule.match_type}] -> {group_text}")
+        event.set_result(event.plain_result("\n".join(lines)).use_t2i(False))
+
+    @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
+    async def on_group_message(self, event: AstrMessageEvent) -> None:
+        if not self._plugin_enabled():
+            return
+
+        if self._ignore_self_messages() and event.get_sender_id() == event.get_self_id():
+            return
+
+        message_text = event.get_message_str().strip()
+        if not message_text:
+            return
+
+        group_id = event.get_group_id().strip()
+        if not group_id:
+            return
+
+        for rule in self._load_rules():
+            if not self._group_matches(rule, group_id):
+                continue
+
+            match_result = self._match_rule(rule, message_text)
+            if not match_result:
+                continue
+
+            if self._is_in_cooldown(group_id, rule):
+                continue
+
+            reply_text = self._build_reply_text(rule, event, message_text, match_result).strip()
+            if not reply_text:
+                logger.warning(
+                    f"GroupKeywordReply matched rule '{rule.name}' but reply text is empty."
+                )
+                continue
+
+            self._mark_triggered(group_id, rule)
+
+            if rule.continue_after_reply:
+                await event.send(MessageChain().message(reply_text).use_t2i(False))
+                return
+
+            event.should_call_llm(False)
+            event.set_result(event.plain_result(reply_text).use_t2i(False).stop_event())
+            return
