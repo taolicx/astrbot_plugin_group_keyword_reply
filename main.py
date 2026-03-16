@@ -2,11 +2,13 @@ import json
 import re
 import time
 from dataclasses import dataclass
+from collections.abc import AsyncGenerator
 from typing import Any
 
 from astrbot.api import logger
-from astrbot.api.event import AstrMessageEvent, MessageChain, filter
+from astrbot.api.event import AstrMessageEvent, MessageChain, MessageEventResult, filter
 from astrbot.api.star import Star, register
+from astrbot.core.star.filter.command import GreedyStr
 
 
 @dataclass(slots=True)
@@ -32,7 +34,7 @@ class SafeFormatDict(dict[str, str]):
     "GroupKeywordReply",
     "Codex",
     "Automatically match configured group messages and send configured replies",
-    "1.0.1",
+    "1.1.0",
     "https://github.com/taolicx/astrbot_plugin_group_keyword_reply",
 )
 class GroupKeywordReplyPlugin(Star):
@@ -43,6 +45,14 @@ class GroupKeywordReplyPlugin(Star):
         self._rules_cache_key = ""
         self._rules_cache: list[ReplyRule] = []
         self._last_trigger_at: dict[str, float] = {}
+
+    def _save_plugin_config(self, updates: dict[str, Any]) -> None:
+        for key, value in updates.items():
+            self.config[key] = value
+
+        save_config = getattr(self.config, "save_config", None)
+        if callable(save_config):
+            save_config()
 
     def _plugin_enabled(self) -> bool:
         value = self.config.get("enabled", True)
@@ -55,6 +65,10 @@ class GroupKeywordReplyPlugin(Star):
         if isinstance(value, bool):
             return value
         return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+    def _group_whitelist(self) -> list[str]:
+        value = self.config.get("group_whitelist", [])
+        return self._parse_groups(value)
 
     def _raw_rules(self) -> Any:
         return self.config.get("rules_json", "[]")
@@ -97,6 +111,52 @@ class GroupKeywordReplyPlugin(Star):
             "re": "regex",
         }
         return aliases.get(match_type, "keyword")
+
+    def _raw_rule_items(self) -> list[dict[str, Any]]:
+        raw_rules = self._raw_rules()
+        if isinstance(raw_rules, list):
+            return [item for item in raw_rules if isinstance(item, dict)]
+
+        text = str(raw_rules or "").strip()
+        if not text:
+            return []
+
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError as exc:
+            logger.warning(f"GroupKeywordReply rules_json is invalid JSON: {exc}")
+            return []
+
+        if not isinstance(data, list):
+            logger.warning("GroupKeywordReply rules_json must be a JSON array.")
+            return []
+
+        return [item for item in data if isinstance(item, dict)]
+
+    def _save_rule_items(self, items: list[dict[str, Any]]) -> None:
+        self._rules_cache_key = ""
+        self._rules_cache = []
+        self._save_plugin_config(
+            {"rules_json": json.dumps(items, ensure_ascii=False, indent=2)}
+        )
+
+    def _find_rule_item(self, name: str) -> tuple[int, dict[str, Any]] | tuple[None, None]:
+        items = self._raw_rule_items()
+        target = str(name or "").strip()
+        index = 0
+        item: dict[str, Any]
+        for index, item in enumerate(items):
+            if str(item.get("name") or "").strip() == target:
+                return index, item
+        return None, None
+
+    def _parse_on_off(self, value: str) -> bool | None:
+        text = str(value or "").strip().lower()
+        if text in {"on", "true", "1", "yes", "开", "开启"}:
+            return True
+        if text in {"off", "false", "0", "no", "关", "关闭"}:
+            return False
+        return None
 
     def _load_rules(self) -> list[ReplyRule]:
         raw_rules = self._raw_rules()
@@ -250,20 +310,250 @@ class GroupKeywordReplyPlugin(Star):
             return
         self._last_trigger_at[self._cooldown_key(group_id, rule.name)] = time.time()
 
-    @filter.command("关键词回复状态")
-    async def keyword_reply_status(self, event: AstrMessageEvent) -> None:
+    @filter.command_group("关键词回复")
+    def keyword_reply(self) -> None:
+        """Group keyword reply management"""
+
+    @keyword_reply.command("状态", alias={"关键词回复状态"})
+    async def keyword_reply_status(
+        self, event: AstrMessageEvent
+    ) -> AsyncGenerator[MessageEventResult, None]:
         rules = self._load_rules()
+        whitelist = self._group_whitelist()
         lines = [
             f"插件启用: {'是' if self._plugin_enabled() else '否'}",
             f"忽略机器人自身消息: {'是' if self._ignore_self_messages() else '否'}",
-            f"已加载规则数: {len(rules)}",
+            f"插件级白名单: {','.join(whitelist) if whitelist else '未设置'}",
+            f"已加载启用规则数: {len(rules)}",
         ]
         if rules:
             lines.append("规则列表:")
             for rule in rules[:10]:
                 group_text = ",".join(rule.groups) if rule.groups else "全部群"
                 lines.append(f"- {rule.name} [{rule.match_type}] -> {group_text}")
-        event.set_result(event.plain_result("\n".join(lines)).use_t2i(False))
+        yield event.plain_result("\n".join(lines)).use_t2i(False)
+
+    @keyword_reply.command("列表")
+    async def keyword_reply_list(
+        self, event: AstrMessageEvent
+    ) -> AsyncGenerator[MessageEventResult, None]:
+        items = self._raw_rule_items()
+        if not items:
+            yield event.plain_result("当前还没有任何关键词回复规则。").use_t2i(False)
+            return
+
+        lines = ["当前规则列表："]
+        for item in items:
+            name = str(item.get("name") or "").strip()
+            match_type = self._normalize_match_type(item.get("match_type", "keyword"))
+            pattern = str(item.get("pattern") or "").strip()
+            enabled = self._parse_bool(item.get("enabled", True), True)
+            groups = self._parse_groups(item.get("groups", []))
+            lines.append(
+                f"- {name} | {'开' if enabled else '关'} | {match_type} | {pattern} | "
+                f"{','.join(groups) if groups else '全部群'}"
+            )
+        yield event.plain_result("\n".join(lines)).use_t2i(False)
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @keyword_reply.command("添加")
+    async def keyword_reply_add(
+        self, event: AstrMessageEvent, raw: GreedyStr = ""
+    ) -> AsyncGenerator[MessageEventResult, None]:
+        text = str(raw or "").strip()
+        parts = [part.strip() for part in text.split("|")]
+        if len(parts) < 4:
+            yield event.plain_result(
+                "用法：/关键词回复 添加 名称 | keyword/exact/regex | 匹配内容 | 回复内容"
+            )
+            return
+
+        name, match_type, pattern, reply = parts[:4]
+        groups = self._parse_groups(parts[4]) if len(parts) >= 5 else []
+        enabled = self._parse_on_off(parts[5]) if len(parts) >= 6 else True
+        enabled = True if enabled is None else enabled
+
+        match_type = self._normalize_match_type(match_type)
+        if match_type == "regex":
+            try:
+                re.compile(pattern)
+            except re.error as exc:
+                yield event.plain_result(f"正则无效：{exc}")
+                return
+
+        items = self._raw_rule_items()
+        for item in items:
+            if str(item.get("name") or "").strip() == name:
+                yield event.plain_result(f"已存在同名规则：{name}")
+                return
+
+        items.append(
+            {
+                "name": name,
+                "enabled": enabled,
+                "groups": groups,
+                "match_type": match_type,
+                "pattern": pattern,
+                "reply": reply,
+                "ignore_case": True,
+                "continue_after_reply": False,
+                "cooldown_seconds": 0,
+                "priority": len(items) + 1,
+            }
+        )
+        self._save_rule_items(items)
+        yield event.plain_result(f"规则已添加：{name}")
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @keyword_reply.command("删除")
+    async def keyword_reply_delete(
+        self, event: AstrMessageEvent, name: str = ""
+    ) -> AsyncGenerator[MessageEventResult, None]:
+        name = str(name or "").strip()
+        if not name:
+            yield event.plain_result("用法：/关键词回复 删除 规则名")
+            return
+
+        items = self._raw_rule_items()
+        next_items = [
+            item for item in items if str(item.get("name") or "").strip() != name
+        ]
+        if len(next_items) == len(items):
+            yield event.plain_result(f"未找到规则：{name}")
+            return
+
+        self._save_rule_items(next_items)
+        yield event.plain_result(f"规则已删除：{name}")
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @keyword_reply.command("开关")
+    async def keyword_reply_toggle(
+        self, event: AstrMessageEvent, name: str = "", status: str = ""
+    ) -> AsyncGenerator[MessageEventResult, None]:
+        enabled = self._parse_on_off(status)
+        if not name or enabled is None:
+            yield event.plain_result("用法：/关键词回复 开关 规则名 开|关")
+            return
+
+        items = self._raw_rule_items()
+        changed = False
+        for item in items:
+            if str(item.get("name") or "").strip() == str(name).strip():
+                item["enabled"] = enabled
+                changed = True
+                break
+        if not changed:
+            yield event.plain_result(f"未找到规则：{name}")
+            return
+
+        self._save_rule_items(items)
+        yield event.plain_result(f"规则 {name} 已设为：{'开' if enabled else '关'}")
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @keyword_reply.command("回复")
+    async def keyword_reply_set_reply(
+        self, event: AstrMessageEvent, name: str = "", reply: GreedyStr = ""
+    ) -> AsyncGenerator[MessageEventResult, None]:
+        name = str(name or "").strip()
+        reply = str(reply or "").strip()
+        if not name or not reply:
+            yield event.plain_result("用法：/关键词回复 回复 规则名 新回复内容")
+            return
+
+        items = self._raw_rule_items()
+        changed = False
+        for item in items:
+            if str(item.get("name") or "").strip() == name:
+                item["reply"] = reply
+                changed = True
+                break
+        if not changed:
+            yield event.plain_result(f"未找到规则：{name}")
+            return
+
+        self._save_rule_items(items)
+        yield event.plain_result(f"规则 {name} 的回复已更新。")
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @keyword_reply.command("群")
+    async def keyword_reply_set_groups(
+        self, event: AstrMessageEvent, name: str = "", groups: GreedyStr = ""
+    ) -> AsyncGenerator[MessageEventResult, None]:
+        name = str(name or "").strip()
+        if not name:
+            yield event.plain_result("用法：/关键词回复 群 规则名 群号1,群号2")
+            return
+
+        group_list = self._parse_groups(groups)
+        items = self._raw_rule_items()
+        changed = False
+        for item in items:
+            if str(item.get("name") or "").strip() == name:
+                item["groups"] = group_list
+                changed = True
+                break
+        if not changed:
+            yield event.plain_result(f"未找到规则：{name}")
+            return
+
+        self._save_rule_items(items)
+        yield event.plain_result(
+            f"规则 {name} 的群范围已更新：{','.join(group_list) if group_list else '全部群'}"
+        )
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @keyword_reply.command("白名单")
+    async def keyword_reply_whitelist(
+        self, event: AstrMessageEvent, action: str = "", group_id: str = ""
+    ) -> AsyncGenerator[MessageEventResult, None]:
+        action = str(action or "").strip()
+        group_id = str(group_id or "").strip()
+        whitelist = self._group_whitelist()
+
+        if action in {"查看", "list", "ls", ""}:
+            yield event.plain_result(
+                f"插件级白名单：{','.join(whitelist) if whitelist else '未设置'}"
+            )
+            return
+
+        if action in {"添加", "add"}:
+            if not group_id:
+                yield event.plain_result("用法：/关键词回复 白名单 添加 群号")
+                return
+            if group_id not in whitelist:
+                whitelist.append(group_id)
+                self._save_plugin_config({"group_whitelist": whitelist})
+            yield event.plain_result(f"白名单已添加：{group_id}")
+            return
+
+        if action in {"删除", "移除", "del", "remove"}:
+            if not group_id:
+                yield event.plain_result("用法：/关键词回复 白名单 删除 群号")
+                return
+            whitelist = [item for item in whitelist if item != group_id]
+            self._save_plugin_config({"group_whitelist": whitelist})
+            yield event.plain_result(f"白名单已删除：{group_id}")
+            return
+
+        yield event.plain_result("用法：/关键词回复 白名单 查看|添加|删除 [群号]")
+
+    @keyword_reply.command("帮助")
+    async def keyword_reply_help(
+        self, event: AstrMessageEvent
+    ) -> AsyncGenerator[MessageEventResult, None]:
+        yield event.plain_result(
+            "关键词回复命令：\n"
+            "/关键词回复 状态\n"
+            "/关键词回复 列表\n"
+            "/关键词回复 添加 名称 | keyword/exact/regex | 匹配内容 | 回复内容 | 群号1,群号2 | 开\n"
+            "/关键词回复 删除 规则名\n"
+            "/关键词回复 开关 规则名 开|关\n"
+            "/关键词回复 回复 规则名 新回复内容\n"
+            "/关键词回复 群 规则名 群号1,群号2\n"
+            "/关键词回复 白名单 查看\n"
+            "/关键词回复 白名单 添加 群号\n"
+            "/关键词回复 白名单 删除 群号"
+        ).use_t2i(False)
 
     @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
     async def on_group_message(self, event: AstrMessageEvent) -> None:
@@ -279,6 +569,10 @@ class GroupKeywordReplyPlugin(Star):
 
         group_id = event.get_group_id().strip()
         if not group_id:
+            return
+
+        whitelist = self._group_whitelist()
+        if whitelist and group_id not in whitelist:
             return
 
         for rule in self._load_rules():

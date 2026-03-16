@@ -11,6 +11,12 @@
     "hint": "Recommended to avoid reply loops triggered by the bot's own messages.",
     "default": true
   },
+  "group_whitelist": {
+    "description": "Plugin Group Whitelist",
+    "type": "text",
+    "hint": "Comma-separated group IDs. Empty means all groups.",
+    "default": ""
+  },
   "rules_json": {
     "description": "Reply Rules JSON",
     "type": "text",
