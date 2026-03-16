@@ -17,6 +17,18 @@
     "hint": "多个群号用逗号分隔。留空表示所有群都可触发。",
     "default": ""
   },
+  "webui_host": {
+    "description": "WebUI 监听地址",
+    "type": "string",
+    "hint": "默认 127.0.0.1，仅本机访问。",
+    "default": "127.0.0.1"
+  },
+  "webui_port": {
+    "description": "WebUI 端口",
+    "type": "int",
+    "hint": "默认 18082。",
+    "default": 18082
+  },
   "rules_json": {
     "description": "回复规则 JSON",
     "type": "text",

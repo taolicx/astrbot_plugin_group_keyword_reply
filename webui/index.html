@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>关键词回复管理面板</title>
+  <style>
+    :root {
+      --bg: #f4f6fb;
+      --card: #ffffff;
+      --line: #d9e0ee;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --accent: #2563eb;
+      --accent-dark: #1d4ed8;
+      --danger: #dc2626;
+      --success: #059669;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: linear-gradient(180deg, #eef4ff 0%, var(--bg) 100%);
+      color: var(--text);
+    }
+    .shell {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 24px 16px 40px;
+    }
+    .hero {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: end;
+      margin-bottom: 18px;
+    }
+    .hero h1 {
+      margin: 0;
+      font-size: 32px;
+    }
+    .hero p {
+      margin: 8px 0 0;
+      color: var(--muted);
+    }
+    .status-box {
+      min-width: 260px;
+      background: rgba(255,255,255,.86);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 12px 14px;
+    }
+    .status-box strong {
+      display: block;
+      margin-bottom: 6px;
+    }
+    .notice {
+      display: none;
+      margin-bottom: 16px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: #fff;
+    }
+    .notice.show { display: block; }
+    .notice.error { border-color: #f0b2b2; color: #8b1d1d; background: #fff4f4; }
+    .notice.success { border-color: #9cd8c0; color: #0f6b49; background: #f3fff9; }
+    .grid {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 18px;
+    }
+    .panel {
+      background: rgba(255,255,255,.92);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 16px;
+      box-shadow: 0 10px 28px rgba(37, 99, 235, .06);
+    }
+    .panel h2 {
+      margin: 0 0 12px;
+      font-size: 18px;
+    }
+    label {
+      display: block;
+      margin-bottom: 12px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    input[type="text"],
+    input[type="number"],
+    textarea,
+    select {
+      width: 100%;
+      margin-top: 6px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      color: var(--text);
+      font: inherit;
+    }
+    textarea {
+      min-height: 96px;
+      resize: vertical;
+    }
+    .check {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      color: var(--text);
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 10px 16px;
+      background: var(--accent);
+      color: #fff;
+      font: inherit;
+      cursor: pointer;
+    }
+    button:hover { background: var(--accent-dark); }
+    button.secondary { background: #94a3b8; }
+    button.danger { background: var(--danger); }
+    .rule-toolbar {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .rule-list {
+      display: grid;
+      gap: 14px;
+    }
+    .rule-card {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 14px;
+      background: #fff;
+    }
+    .rule-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .rule-head strong { font-size: 16px; }
+    .rule-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .rule-grid .wide { grid-column: 1 / -1; }
+    .muted {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    @media (max-width: 900px) {
+      .grid { grid-template-columns: 1fr; }
+      .hero { flex-direction: column; align-items: stretch; }
+      .rule-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div id="notice" class="notice"></div>
+
+    <section class="hero">
+      <div>
+        <h1>关键词回复管理面板</h1>
+        <p>在这里直接管理规则、插件开关和群白名单，不用再手改 JSON。</p>
+      </div>
+      <div class="status-box">
+        <strong>当前面板地址</strong>
+        <div id="current-url">-</div>
+      </div>
+    </section>
+
+    <div class="grid">
+      <aside class="panel">
+        <h2>插件设置</h2>
+
+        <label class="check">
+          <input id="enabled" type="checkbox">
+          <span>启用插件</span>
+        </label>
+
+        <label class="check">
+          <input id="ignore-self" type="checkbox">
+          <span>忽略机器人自身消息</span>
+        </label>
+
+        <label>
+          插件级群白名单
+          <textarea id="group-whitelist" placeholder="多个群号用逗号分隔，为空表示所有群可触发"></textarea>
+        </label>
+
+        <div class="actions">
+          <button id="save-settings" type="button">保存全部设置</button>
+        </div>
+
+        <div class="muted" style="margin-top:12px;">
+          白名单为空：所有群可触发。<br>
+          白名单不为空：只有白名单里的群可触发。
+        </div>
+      </aside>
+
+      <main class="panel">
+        <div class="rule-toolbar">
+          <h2>规则列表</h2>
+          <button id="add-rule" type="button">新增规则</button>
+        </div>
+        <div id="rule-list" class="rule-list"></div>
+      </main>
+    </div>
+  </div>
+
+  <template id="rule-template">
+    <article class="rule-card">
+      <div class="rule-head">
+        <strong class="rule-title">新规则</strong>
+        <button class="danger delete-rule" type="button">删除</button>
+      </div>
+      <div class="rule-grid">
+        <label>
+          规则名称
+          <input class="rule-name" type="text">
+        </label>
+        <label>
+          匹配方式
+          <select class="rule-match-type">
+            <option value="keyword">keyword</option>
+            <option value="exact">exact</option>
+            <option value="regex">regex</option>
+          </select>
+        </label>
+        <label class="wide">
+          匹配内容
+          <input class="rule-pattern" type="text">
+        </label>
+        <label class="wide">
+          回复内容
+          <textarea class="rule-reply"></textarea>
+        </label>
+        <label>
+          生效群
+          <input class="rule-groups" type="text" placeholder="多个群号用逗号分隔；留空表示全部群">
+        </label>
+        <label>
+          冷却秒数
+          <input class="rule-cooldown" type="number" min="0" step="1">
+        </label>
+        <label>
+          优先级
+          <input class="rule-priority" type="number" min="1" step="1">
+        </label>
+        <div>
+          <label class="check"><input class="rule-enabled" type="checkbox"><span>启用规则</span></label>
+          <label class="check"><input class="rule-ignore-case" type="checkbox"><span>忽略大小写</span></label>
+          <label class="check"><input class="rule-continue" type="checkbox"><span>回复后继续后续处理</span></label>
+        </div>
+      </div>
+    </article>
+  </template>
+
+  <script>
+    const notice = document.getElementById('notice');
+    const currentUrl = document.getElementById('current-url');
+    const enabledInput = document.getElementById('enabled');
+    const ignoreSelfInput = document.getElementById('ignore-self');
+    const whitelistInput = document.getElementById('group-whitelist');
+    const ruleList = document.getElementById('rule-list');
+    const ruleTemplate = document.getElementById('rule-template');
+
+    function showNotice(message, type = 'success') {
+      notice.textContent = message;
+      notice.className = `notice show ${type}`;
+    }
+
+    function hideNotice() {
+      notice.className = 'notice';
+      notice.textContent = '';
+    }
+
+    function ruleCardToData(card, index) {
+      return {
+        name: card.querySelector('.rule-name').value.trim(),
+        enabled: card.querySelector('.rule-enabled').checked,
+        groups: card.querySelector('.rule-groups').value.split(/[,，]/).map(v => v.trim()).filter(Boolean),
+        match_type: card.querySelector('.rule-match-type').value,
+        pattern: card.querySelector('.rule-pattern').value.trim(),
+        reply: card.querySelector('.rule-reply').value.trim(),
+        ignore_case: card.querySelector('.rule-ignore-case').checked,
+        continue_after_reply: card.querySelector('.rule-continue').checked,
+        cooldown_seconds: Number(card.querySelector('.rule-cooldown').value || 0),
+        priority: Number(card.querySelector('.rule-priority').value || index + 1),
+      };
+    }
+
+    function createRuleCard(rule = {}, index = 0) {
+      const node = ruleTemplate.content.firstElementChild.cloneNode(true);
+      node.querySelector('.rule-title').textContent = rule.name || `规则 ${index + 1}`;
+      node.querySelector('.rule-name').value = rule.name || '';
+      node.querySelector('.rule-match-type').value = rule.match_type || 'keyword';
+      node.querySelector('.rule-pattern').value = rule.pattern || '';
+      node.querySelector('.rule-reply').value = rule.reply || '';
+      node.querySelector('.rule-groups').value = Array.isArray(rule.groups) ? rule.groups.join(',') : '';
+      node.querySelector('.rule-cooldown').value = rule.cooldown_seconds ?? 0;
+      node.querySelector('.rule-priority').value = rule.priority ?? (index + 1);
+      node.querySelector('.rule-enabled').checked = rule.enabled !== false;
+      node.querySelector('.rule-ignore-case').checked = rule.ignore_case !== false;
+      node.querySelector('.rule-continue').checked = !!rule.continue_after_reply;
+      node.querySelector('.delete-rule').addEventListener('click', () => node.remove());
+      node.querySelector('.rule-name').addEventListener('input', (event) => {
+        node.querySelector('.rule-title').textContent = event.target.value.trim() || `规则 ${index + 1}`;
+      });
+      return node;
+    }
+
+    async function loadState() {
+      hideNotice();
+      const response = await fetch('/api/state');
+      const data = await response.json();
+      currentUrl.textContent = data.webui_url || location.href;
+      enabledInput.checked = !!data.enabled;
+      ignoreSelfInput.checked = !!data.ignore_self_messages;
+      whitelistInput.value = Array.isArray(data.group_whitelist) ? data.group_whitelist.join(',') : '';
+      ruleList.innerHTML = '';
+      (data.rules || []).forEach((rule, index) => {
+        ruleList.appendChild(createRuleCard(rule, index));
+      });
+      if (!(data.rules || []).length) {
+        ruleList.appendChild(createRuleCard({}, 0));
+      }
+    }
+
+    async function saveAll() {
+      hideNotice();
+      const cards = [...ruleList.querySelectorAll('.rule-card')];
+      const payload = {
+        enabled: enabledInput.checked,
+        ignore_self_messages: ignoreSelfInput.checked,
+        group_whitelist: whitelistInput.value.split(/[,，]/).map(v => v.trim()).filter(Boolean),
+        rules: cards.map((card, index) => ruleCardToData(card, index)),
+      };
+      const response = await fetch('/api/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        showNotice(data.message || '保存失败。', 'error');
+        return;
+      }
+      showNotice(data.message || '保存成功。', 'success');
+      await loadState();
+    }
+
+    document.getElementById('save-settings').addEventListener('click', saveAll);
+    document.getElementById('add-rule').addEventListener('click', () => {
+      const index = ruleList.querySelectorAll('.rule-card').length;
+      ruleList.appendChild(createRuleCard({}, index));
+    });
+
+    loadState().catch((error) => showNotice(`加载失败：${error}`, 'error'));
+  </script>
+</body>
+</html>
