@@ -32,8 +32,8 @@
   "rules_json": {
     "description": "回复规则 JSON",
     "type": "text",
-    "hint": "JSON 数组。每项支持：name、enabled、groups、match_type(keyword/exact/regex)、pattern、reply、ignore_case、continue_after_reply、cooldown_seconds、priority。reply 可用变量：{message} {sender_id} {sender_name} {group_id} {rule_name}；正则还支持 {match} {g1} 以及命名分组变量。",
-    "default": "[\n  {\n    \"name\": \"广告提醒\",\n    \"enabled\": true,\n    \"groups\": [\"123456789\"],\n    \"match_type\": \"keyword\",\n    \"pattern\": \"代挂\",\n    \"reply\": \"本群禁止发布代挂广告，请遵守群规。\",\n    \"ignore_case\": true,\n    \"continue_after_reply\": false,\n    \"cooldown_seconds\": 10,\n    \"priority\": 1\n  },\n  {\n    \"name\": \"新人欢迎\",\n    \"enabled\": false,\n    \"groups\": [],\n    \"match_type\": \"regex\",\n    \"pattern\": \"^我是(?P<name>.+)$\",\n    \"reply\": \"收到，欢迎你 {name}。\",\n    \"ignore_case\": true,\n    \"continue_after_reply\": false,\n    \"cooldown_seconds\": 0,\n    \"priority\": 2\n  }\n]",
+    "hint": "JSON 数组。每项支持：name、enabled、groups、match_type(keyword/exact/regex)、pattern、reply、ignore_case、continue_after_reply、cooldown_seconds、priority、max_reply_count、reply_count。reply 可用变量：{message} {sender_id} {sender_name} {group_id} {rule_name}；正则还支持 {match} {g1} 以及命名分组变量。max_reply_count 为 0 表示不限次数。",
+    "default": "[\n  {\n    \"name\": \"广告提醒\",\n    \"enabled\": true,\n    \"groups\": [\"123456789\"],\n    \"match_type\": \"keyword\",\n    \"pattern\": \"代挂\",\n    \"reply\": \"本群禁止发布代挂广告，请遵守群规。\",\n    \"ignore_case\": true,\n    \"continue_after_reply\": false,\n    \"cooldown_seconds\": 10,\n    \"priority\": 1,\n    \"max_reply_count\": 2,\n    \"reply_count\": 0\n  },\n  {\n    \"name\": \"新人欢迎\",\n    \"enabled\": false,\n    \"groups\": [],\n    \"match_type\": \"regex\",\n    \"pattern\": \"^我是(?P<name>.+)$\",\n    \"reply\": \"收到，欢迎你 {name}。\",\n    \"ignore_case\": true,\n    \"continue_after_reply\": false,\n    \"cooldown_seconds\": 0,\n    \"priority\": 2,\n    \"max_reply_count\": 0,\n    \"reply_count\": 0\n  }\n]",
     "editor_mode": true,
     "editor_language": "json",
     "editor_theme": "vs-light"

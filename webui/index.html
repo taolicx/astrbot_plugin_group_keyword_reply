@@ -261,6 +261,14 @@
           <input class="rule-cooldown" type="number" min="0" step="1">
         </label>
         <label>
+          最大回复次数
+          <input class="rule-max-reply-count" type="number" min="0" step="1" placeholder="0 表示不限">
+        </label>
+        <label>
+          已回复次数
+          <input class="rule-reply-count" type="number" min="0" step="1">
+        </label>
+        <label>
           优先级
           <input class="rule-priority" type="number" min="1" step="1">
         </label>
@@ -303,6 +311,8 @@
         ignore_case: card.querySelector('.rule-ignore-case').checked,
         continue_after_reply: card.querySelector('.rule-continue').checked,
         cooldown_seconds: Number(card.querySelector('.rule-cooldown').value || 0),
+        max_reply_count: Number(card.querySelector('.rule-max-reply-count').value || 0),
+        reply_count: Number(card.querySelector('.rule-reply-count').value || 0),
         priority: Number(card.querySelector('.rule-priority').value || index + 1),
       };
     }
@@ -316,6 +326,8 @@
       node.querySelector('.rule-reply').value = rule.reply || '';
       node.querySelector('.rule-groups').value = Array.isArray(rule.groups) ? rule.groups.join(',') : '';
       node.querySelector('.rule-cooldown').value = rule.cooldown_seconds ?? 0;
+      node.querySelector('.rule-max-reply-count').value = rule.max_reply_count ?? 0;
+      node.querySelector('.rule-reply-count').value = rule.reply_count ?? 0;
       node.querySelector('.rule-priority').value = rule.priority ?? (index + 1);
       node.querySelector('.rule-enabled').checked = rule.enabled !== false;
       node.querySelector('.rule-ignore-case').checked = rule.ignore_case !== false;

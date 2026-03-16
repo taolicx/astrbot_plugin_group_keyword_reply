@@ -26,6 +26,8 @@ class ReplyRule:
     continue_after_reply: bool
     cooldown_seconds: float
     priority: int
+    max_reply_count: int
+    reply_count: int
     compiled_pattern: re.Pattern[str] | None = None
 
 
@@ -182,6 +184,24 @@ class GroupKeywordReplyPlugin(Star):
             {"rules_json": json.dumps(items, ensure_ascii=False, indent=2)}
         )
 
+    def _increment_rule_reply_count(self, rule_name: str) -> None:
+        items = self._raw_rule_items()
+        changed = False
+        for item in items:
+            if str(item.get("name") or "").strip() == rule_name:
+                try:
+                    current = int(item.get("reply_count", 0))
+                except (TypeError, ValueError):
+                    current = 0
+                item["reply_count"] = current + 1
+                changed = True
+                break
+        if changed:
+            self._save_rule_items(items)
+
+    def _is_reply_limit_reached(self, rule: ReplyRule) -> bool:
+        return rule.max_reply_count > 0 and rule.reply_count >= rule.max_reply_count
+
     def _load_rules(self) -> list[ReplyRule]:
         raw_rules = self._raw_rules()
         cache_key = self._make_rules_cache_key(raw_rules)
@@ -222,6 +242,16 @@ class GroupKeywordReplyPlugin(Star):
             except (TypeError, ValueError):
                 priority = index + 1
 
+            try:
+                max_reply_count = max(int(item.get("max_reply_count", 0)), 0)
+            except (TypeError, ValueError):
+                max_reply_count = 0
+
+            try:
+                reply_count = max(int(item.get("reply_count", 0)), 0)
+            except (TypeError, ValueError):
+                reply_count = 0
+
             compiled_pattern: re.Pattern[str] | None = None
             if match_type == "regex":
                 flags = re.IGNORECASE if ignore_case else 0
@@ -244,6 +274,8 @@ class GroupKeywordReplyPlugin(Star):
                     continue_after_reply=continue_after_reply,
                     cooldown_seconds=cooldown_seconds,
                     priority=priority,
+                    max_reply_count=max_reply_count,
+                    reply_count=reply_count,
                     compiled_pattern=compiled_pattern,
                 )
             )
@@ -353,6 +385,16 @@ class GroupKeywordReplyPlugin(Star):
                 return web.json_response({"ok": False, "message": f"规则 {item.get('name')} 的匹配内容不能为空。"}, status=400)
             if not str(item.get("reply") or "").strip():
                 return web.json_response({"ok": False, "message": f"规则 {item.get('name')} 的回复内容不能为空。"}, status=400)
+            try:
+                max_reply_count = max(int(item.get("max_reply_count", 0)), 0)
+                item["max_reply_count"] = max_reply_count
+            except (TypeError, ValueError):
+                return web.json_response({"ok": False, "message": f"规则 {item.get('name')} 的最大回复次数必须是数字。"}, status=400)
+            try:
+                reply_count = max(int(item.get("reply_count", 0)), 0)
+                item["reply_count"] = reply_count
+            except (TypeError, ValueError):
+                item["reply_count"] = 0
             if self._normalize_match_type(item.get("match_type", "keyword")) == "regex":
                 try:
                     re.compile(str(item.get("pattern") or ""))
@@ -440,7 +482,8 @@ class GroupKeywordReplyPlugin(Star):
             lines.append("规则列表:")
             for rule in rules[:10]:
                 group_text = ",".join(rule.groups) if rule.groups else "全部群"
-                lines.append(f"- {rule.name} [{rule.match_type}] -> {group_text}")
+                limit_text = "不限" if rule.max_reply_count <= 0 else f"{rule.reply_count}/{rule.max_reply_count}"
+                lines.append(f"- {rule.name} [{rule.match_type}] -> {group_text} | 次数 {limit_text}")
         yield event.plain_result("\n".join(lines)).use_t2i(False)
 
     @keyword_reply.command("列表")
@@ -461,7 +504,8 @@ class GroupKeywordReplyPlugin(Star):
             groups = self._parse_groups(item.get("groups", []))
             lines.append(
                 f"- {name} | {'开' if enabled else '关'} | {match_type} | {pattern} | "
-                f"{','.join(groups) if groups else '全部群'}"
+                f"{','.join(groups) if groups else '全部群'} | "
+                f"{int(item.get('reply_count', 0))}/{int(item.get('max_reply_count', 0) or 0) if int(item.get('max_reply_count', 0) or 0) > 0 else '不限'}"
             )
         yield event.plain_result("\n".join(lines)).use_t2i(False)
 
@@ -482,6 +526,13 @@ class GroupKeywordReplyPlugin(Star):
         groups = self._parse_groups(parts[4]) if len(parts) >= 5 else []
         enabled = self._parse_on_off(parts[5]) if len(parts) >= 6 else True
         enabled = True if enabled is None else enabled
+        max_reply_count = 0
+        if len(parts) >= 7:
+            try:
+                max_reply_count = max(int(parts[6]), 0)
+            except (TypeError, ValueError):
+                yield event.plain_result("最大回复次数必须是数字，0 表示不限。")
+                return
 
         match_type = self._normalize_match_type(match_type)
         if match_type == "regex":
@@ -509,6 +560,8 @@ class GroupKeywordReplyPlugin(Star):
                 "continue_after_reply": False,
                 "cooldown_seconds": 0,
                 "priority": len(items) + 1,
+                "max_reply_count": max_reply_count,
+                "reply_count": 0,
             }
         )
         self._save_rule_items(items)
@@ -583,6 +636,63 @@ class GroupKeywordReplyPlugin(Star):
 
         self._save_rule_items(items)
         yield event.plain_result(f"规则 {name} 的回复已更新。")
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @keyword_reply.command("次数")
+    async def keyword_reply_set_limit(
+        self, event: AstrMessageEvent, name: str = "", value: str = ""
+    ) -> AsyncGenerator[MessageEventResult, None]:
+        name = str(name or "").strip()
+        value = str(value or "").strip()
+        if not name or not value:
+            yield event.plain_result("用法：/关键词回复 次数 规则名 次数上限（0 表示不限）")
+            return
+
+        try:
+            max_reply_count = max(int(value), 0)
+        except (TypeError, ValueError):
+            yield event.plain_result("次数上限必须是数字，0 表示不限。")
+            return
+
+        items = self._raw_rule_items()
+        changed = False
+        for item in items:
+            if str(item.get("name") or "").strip() == name:
+                item["max_reply_count"] = max_reply_count
+                changed = True
+                break
+        if not changed:
+            yield event.plain_result(f"未找到规则：{name}")
+            return
+
+        self._save_rule_items(items)
+        yield event.plain_result(
+            f"规则 {name} 的最大回复次数已更新为：{'不限' if max_reply_count == 0 else max_reply_count}"
+        )
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @keyword_reply.command("重置次数")
+    async def keyword_reply_reset_count(
+        self, event: AstrMessageEvent, name: str = ""
+    ) -> AsyncGenerator[MessageEventResult, None]:
+        name = str(name or "").strip()
+        if not name:
+            yield event.plain_result("用法：/关键词回复 重置次数 规则名")
+            return
+
+        items = self._raw_rule_items()
+        changed = False
+        for item in items:
+            if str(item.get("name") or "").strip() == name:
+                item["reply_count"] = 0
+                changed = True
+                break
+        if not changed:
+            yield event.plain_result(f"未找到规则：{name}")
+            return
+
+        self._save_rule_items(items)
+        yield event.plain_result(f"规则 {name} 的已回复次数已清零。")
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @keyword_reply.command("群")
@@ -660,6 +770,8 @@ class GroupKeywordReplyPlugin(Star):
             "/关键词回复 删除 规则名\n"
             "/关键词回复 开关 规则名 开|关\n"
             "/关键词回复 回复 规则名 新回复内容\n"
+            "/关键词回复 次数 规则名 次数上限\n"
+            "/关键词回复 重置次数 规则名\n"
             "/关键词回复 群 规则名 群号1,群号2\n"
             "/关键词回复 白名单 查看\n"
             "/关键词回复 白名单 添加 群号\n"
@@ -697,6 +809,9 @@ class GroupKeywordReplyPlugin(Star):
             if self._is_in_cooldown(group_id, rule):
                 continue
 
+            if self._is_reply_limit_reached(rule):
+                continue
+
             reply_text = self._build_reply_text(rule, event, message_text, match_result).strip()
             if not reply_text:
                 logger.warning(
@@ -705,6 +820,7 @@ class GroupKeywordReplyPlugin(Star):
                 continue
 
             self._mark_triggered(group_id, rule)
+            self._increment_rule_reply_count(rule.name)
 
             if rule.continue_after_reply:
                 await event.send(MessageChain().message(reply_text).use_t2i(False))
