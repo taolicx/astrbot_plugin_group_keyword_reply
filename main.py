@@ -1,8 +1,8 @@
 import json
 import re
 import time
-from dataclasses import dataclass
 from collections.abc import AsyncGenerator
+from dataclasses import dataclass
 from typing import Any
 
 from astrbot.api import logger
@@ -33,8 +33,8 @@ class SafeFormatDict(dict[str, str]):
 @register(
     "GroupKeywordReply",
     "Codex",
-    "Automatically match configured group messages and send configured replies",
-    "1.1.0",
+    "按规则匹配群消息并自动发送预设回复",
+    "1.1.1",
     "https://github.com/taolicx/astrbot_plugin_group_keyword_reply",
 )
 class GroupKeywordReplyPlugin(Star):
@@ -67,8 +67,7 @@ class GroupKeywordReplyPlugin(Star):
         return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
     def _group_whitelist(self) -> list[str]:
-        value = self.config.get("group_whitelist", [])
-        return self._parse_groups(value)
+        return self._parse_groups(self.config.get("group_whitelist", []))
 
     def _raw_rules(self) -> Any:
         return self.config.get("rules_json", "[]")
@@ -88,6 +87,14 @@ class GroupKeywordReplyPlugin(Star):
             return default
         return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
+    def _parse_on_off(self, value: str) -> bool | None:
+        text = str(value or "").strip().lower()
+        if text in {"on", "true", "1", "yes", "开", "开启"}:
+            return True
+        if text in {"off", "false", "0", "no", "关", "关闭"}:
+            return False
+        return None
+
     def _parse_groups(self, value: Any) -> list[str]:
         if value is None:
             return []
@@ -97,7 +104,7 @@ class GroupKeywordReplyPlugin(Star):
             text = value.strip()
             if not text:
                 return []
-            return [item.strip() for item in text.split(",") if item.strip()]
+            return [item.strip() for item in re.split(r"[,，]", text) if item.strip()]
         return [str(value).strip()]
 
     def _normalize_match_type(self, value: Any) -> str:
@@ -140,53 +147,15 @@ class GroupKeywordReplyPlugin(Star):
             {"rules_json": json.dumps(items, ensure_ascii=False, indent=2)}
         )
 
-    def _find_rule_item(self, name: str) -> tuple[int, dict[str, Any]] | tuple[None, None]:
-        items = self._raw_rule_items()
-        target = str(name or "").strip()
-        index = 0
-        item: dict[str, Any]
-        for index, item in enumerate(items):
-            if str(item.get("name") or "").strip() == target:
-                return index, item
-        return None, None
-
-    def _parse_on_off(self, value: str) -> bool | None:
-        text = str(value or "").strip().lower()
-        if text in {"on", "true", "1", "yes", "开", "开启"}:
-            return True
-        if text in {"off", "false", "0", "no", "关", "关闭"}:
-            return False
-        return None
-
     def _load_rules(self) -> list[ReplyRule]:
         raw_rules = self._raw_rules()
         cache_key = self._make_rules_cache_key(raw_rules)
         if cache_key == self._rules_cache_key:
             return self._rules_cache
 
-        parsed_rules: list[dict[str, Any]]
-        if isinstance(raw_rules, list):
-            parsed_rules = [item for item in raw_rules if isinstance(item, dict)]
-        else:
-            text = str(raw_rules or "").strip()
-            if not text:
-                parsed_rules = []
-            else:
-                try:
-                    data = json.loads(text)
-                except json.JSONDecodeError as exc:
-                    logger.warning(f"GroupKeywordReply rules_json is invalid JSON: {exc}")
-                    self._rules_cache_key = cache_key
-                    self._rules_cache = []
-                    return self._rules_cache
-                if not isinstance(data, list):
-                    logger.warning("GroupKeywordReply rules_json must be a JSON array.")
-                    self._rules_cache_key = cache_key
-                    self._rules_cache = []
-                    return self._rules_cache
-                parsed_rules = [item for item in data if isinstance(item, dict)]
-
+        parsed_rules = self._raw_rule_items()
         rules: list[ReplyRule] = []
+
         for index, item in enumerate(parsed_rules):
             enabled = self._parse_bool(item.get("enabled", True), True)
             if not enabled:
@@ -312,7 +281,7 @@ class GroupKeywordReplyPlugin(Star):
 
     @filter.command_group("关键词回复")
     def keyword_reply(self) -> None:
-        """Group keyword reply management"""
+        """关键词回复管理"""
 
     @keyword_reply.command("状态", alias={"关键词回复状态"})
     async def keyword_reply_status(
@@ -554,51 +523,3 @@ class GroupKeywordReplyPlugin(Star):
             "/关键词回复 白名单 添加 群号\n"
             "/关键词回复 白名单 删除 群号"
         ).use_t2i(False)
-
-    @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
-    async def on_group_message(self, event: AstrMessageEvent) -> None:
-        if not self._plugin_enabled():
-            return
-
-        if self._ignore_self_messages() and event.get_sender_id() == event.get_self_id():
-            return
-
-        message_text = event.get_message_str().strip()
-        if not message_text:
-            return
-
-        group_id = event.get_group_id().strip()
-        if not group_id:
-            return
-
-        whitelist = self._group_whitelist()
-        if whitelist and group_id not in whitelist:
-            return
-
-        for rule in self._load_rules():
-            if not self._group_matches(rule, group_id):
-                continue
-
-            match_result = self._match_rule(rule, message_text)
-            if not match_result:
-                continue
-
-            if self._is_in_cooldown(group_id, rule):
-                continue
-
-            reply_text = self._build_reply_text(rule, event, message_text, match_result).strip()
-            if not reply_text:
-                logger.warning(
-                    f"GroupKeywordReply matched rule '{rule.name}' but reply text is empty."
-                )
-                continue
-
-            self._mark_triggered(group_id, rule)
-
-            if rule.continue_after_reply:
-                await event.send(MessageChain().message(reply_text).use_t2i(False))
-                return
-
-            event.should_call_llm(False)
-            event.set_result(event.plain_result(reply_text).use_t2i(False).stop_event())
-            return
