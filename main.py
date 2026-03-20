@@ -3,7 +3,7 @@ import json
 import re
 import time
 from collections.abc import AsyncGenerator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +13,14 @@ from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, MessageChain, MessageEventResult, filter
 from astrbot.api.star import Star, register
 from astrbot.core.star.filter.command import GreedyStr
+
+
+@dataclass(slots=True)
+class ReplyBranch:
+    title: str
+    keywords: list[str]
+    reply: str
+    match_policy: str = "any"
 
 
 @dataclass(slots=True)
@@ -29,6 +37,8 @@ class ReplyRule:
     priority: int
     max_reply_count: int
     reply_count: int
+    required_keywords: list[str] = field(default_factory=list)
+    branch_replies: list[ReplyBranch] = field(default_factory=list)
     compiled_pattern: re.Pattern[str] | None = None
 
 
@@ -41,7 +51,7 @@ class SafeFormatDict(dict[str, str]):
     "GroupKeywordReply",
     "Codex",
     "按规则匹配群消息并自动发送预设回复",
-    "1.3.0",
+    "1.4.0",
     "https://github.com/taolicx/astrbot_plugin_group_keyword_reply",
 )
 class GroupKeywordReplyPlugin(Star):
@@ -71,6 +81,10 @@ class GroupKeywordReplyPlugin(Star):
         save_config = getattr(self.config, "save_config", None)
         if callable(save_config):
             save_config()
+
+    def _clear_rules_cache(self) -> None:
+        self._rules_cache_key = ""
+        self._rules_cache = []
 
     def _plugin_enabled(self) -> bool:
         value = self.config.get("enabled", True)
@@ -150,12 +164,220 @@ class GroupKeywordReplyPlugin(Star):
         aliases = {
             "contains": "keyword",
             "keyword": "keyword",
+            "关键词": "keyword",
+            "包含": "keyword",
             "exact": "exact",
             "full": "exact",
+            "整句": "exact",
+            "完全一致": "exact",
             "regex": "regex",
             "re": "regex",
+            "正则": "regex",
         }
         return aliases.get(match_type, "keyword")
+
+    def _describe_match_type(self, value: Any) -> str:
+        match_type = self._normalize_match_type(value)
+        labels = {
+            "keyword": "关键词包含",
+            "exact": "整句一样",
+            "regex": "正则匹配",
+        }
+        return labels.get(match_type, "关键词包含")
+
+    def _normalize_match_policy(self, value: Any) -> str:
+        policy = str(value or "any").strip().lower()
+        aliases = {
+            "any": "any",
+            "or": "any",
+            "任意": "any",
+            "任一": "any",
+            "all": "all",
+            "and": "all",
+            "全部": "all",
+            "同时": "all",
+        }
+        return aliases.get(policy, "any")
+
+    def _coerce_float(self, value: Any, default: float = 0.0) -> float:
+        try:
+            return max(float(value), 0.0)
+        except (TypeError, ValueError):
+            return default
+
+    def _coerce_int(self, value: Any, default: int = 0, minimum: int = 0) -> int:
+        try:
+            return max(int(value), minimum)
+        except (TypeError, ValueError):
+            return default
+
+    def _prepare_branch_for_editor(
+        self, item: Any, index: int = 0
+    ) -> dict[str, Any]:
+        if not isinstance(item, dict):
+            item = {}
+        keywords = self._parse_groups(item.get("keywords", []))
+        title = str(item.get("title") or item.get("name") or "").strip()
+        if not title:
+            title = keywords[0] if keywords else f"扩展回复 {index + 1}"
+        return {
+            "title": title,
+            "keywords": keywords,
+            "reply": str(item.get("reply") or "").strip(),
+            "match_policy": self._normalize_match_policy(
+                item.get("match_policy", "any")
+            ),
+        }
+
+    def _prepare_rule_for_editor(
+        self, item: dict[str, Any], index: int = 0
+    ) -> dict[str, Any]:
+        match_type = self._normalize_match_type(item.get("match_type", "keyword"))
+        pattern = str(item.get("pattern") or "").strip()
+        required_keywords = self._parse_groups(item.get("required_keywords", []))
+        if match_type == "keyword" and not required_keywords and pattern:
+            required_keywords = [pattern]
+
+        raw_branches = item.get("branch_replies", [])
+        if not isinstance(raw_branches, list):
+            raw_branches = []
+
+        return {
+            "name": str(item.get("name") or f"规则 {index + 1}").strip(),
+            "enabled": self._parse_bool(item.get("enabled", True), True),
+            "groups": self._parse_groups(item.get("groups", [])),
+            "exclude_keywords": self._parse_groups(item.get("exclude_keywords", [])),
+            "match_type": match_type,
+            "pattern": pattern or ",".join(required_keywords),
+            "required_keywords": required_keywords,
+            "reply": str(item.get("reply") or item.get("default_reply") or "").strip(),
+            "branch_replies": [
+                self._prepare_branch_for_editor(branch, branch_index)
+                for branch_index, branch in enumerate(raw_branches)
+            ],
+            "ignore_case": self._parse_bool(item.get("ignore_case", True), True),
+            "continue_after_reply": self._parse_bool(
+                item.get("continue_after_reply", False), False
+            ),
+            "cooldown_seconds": self._coerce_float(item.get("cooldown_seconds", 0)),
+            "priority": self._coerce_int(item.get("priority", index + 1), index + 1, 1),
+            "max_reply_count": self._coerce_int(item.get("max_reply_count", 0)),
+            "reply_count": self._coerce_int(item.get("reply_count", 0)),
+        }
+
+    def _sanitize_branch_item(
+        self, item: Any, index: int, rule_name: str
+    ) -> dict[str, Any]:
+        if not isinstance(item, dict):
+            raise ValueError(f"规则 {rule_name} 的第 {index + 1} 条扩展回复格式不正确。")
+
+        keywords = self._parse_groups(item.get("keywords", []))
+        if not keywords:
+            raise ValueError(f"规则 {rule_name} 的第 {index + 1} 条扩展回复没有填写关键词。")
+
+        reply = str(item.get("reply") or "").strip()
+        if not reply:
+            raise ValueError(f"规则 {rule_name} 的第 {index + 1} 条扩展回复没有填写回复内容。")
+
+        title = str(item.get("title") or item.get("name") or "").strip()
+        if not title:
+            title = keywords[0] if keywords else f"扩展回复 {index + 1}"
+
+        return {
+            "title": title,
+            "keywords": keywords,
+            "reply": reply,
+            "match_policy": self._normalize_match_policy(
+                item.get("match_policy", "any")
+            ),
+        }
+
+    def _sanitize_rule_item(
+        self, item: Any, index: int = 0
+    ) -> dict[str, Any]:
+        if not isinstance(item, dict):
+            raise ValueError("规则项必须是对象。")
+
+        name = str(item.get("name") or "").strip()
+        if not name:
+            raise ValueError("规则名称不能为空。")
+
+        match_type = self._normalize_match_type(item.get("match_type", "keyword"))
+        pattern = str(item.get("pattern") or "").strip()
+        required_keywords = self._parse_groups(item.get("required_keywords", []))
+        reply = str(item.get("reply") or item.get("default_reply") or "").strip()
+
+        raw_branches = item.get("branch_replies", [])
+        if raw_branches is None:
+            raw_branches = []
+        if not isinstance(raw_branches, list):
+            raise ValueError(f"规则 {name} 的扩展回复列表格式不正确。")
+
+        branch_replies = [
+            self._sanitize_branch_item(branch, branch_index, name)
+            for branch_index, branch in enumerate(raw_branches)
+        ]
+
+        groups = self._parse_groups(item.get("groups", []))
+        exclude_keywords = self._parse_groups(item.get("exclude_keywords", []))
+        ignore_case = self._parse_bool(item.get("ignore_case", True), True)
+        continue_after_reply = self._parse_bool(
+            item.get("continue_after_reply", False), False
+        )
+        cooldown_seconds = self._coerce_float(item.get("cooldown_seconds", 0))
+        priority = self._coerce_int(item.get("priority", index + 1), index + 1, 1)
+
+        try:
+            max_reply_count = max(int(item.get("max_reply_count", 0)), 0)
+        except (TypeError, ValueError):
+            raise ValueError(f"规则 {name} 的最多回复次数必须是数字。")
+
+        try:
+            reply_count = max(int(item.get("reply_count", 0)), 0)
+        except (TypeError, ValueError):
+            reply_count = 0
+
+        if match_type == "keyword":
+            if not required_keywords:
+                if pattern:
+                    required_keywords = [pattern]
+                else:
+                    raise ValueError(f"规则 {name} 至少要填写一个必备关键词。")
+            pattern = ",".join(required_keywords)
+            if not reply and not branch_replies:
+                raise ValueError(
+                    f"规则 {name} 至少要填写一个回复，可以是基础回复，或下面的扩展回复。"
+                )
+        else:
+            required_keywords = []
+            branch_replies = []
+            if not pattern:
+                raise ValueError(f"规则 {name} 的触发内容不能为空。")
+            if not reply:
+                raise ValueError(f"规则 {name} 的回复内容不能为空。")
+            if match_type == "regex":
+                try:
+                    re.compile(pattern)
+                except re.error as exc:
+                    raise ValueError(f"规则 {name} 的正则表达式无效：{exc}")
+
+        return {
+            "name": name,
+            "enabled": self._parse_bool(item.get("enabled", True), True),
+            "groups": groups,
+            "exclude_keywords": exclude_keywords,
+            "match_type": match_type,
+            "pattern": pattern,
+            "required_keywords": required_keywords,
+            "reply": reply,
+            "branch_replies": branch_replies,
+            "ignore_case": ignore_case,
+            "continue_after_reply": continue_after_reply,
+            "cooldown_seconds": cooldown_seconds,
+            "priority": priority,
+            "max_reply_count": max_reply_count,
+            "reply_count": reply_count,
+        }
 
     def _raw_rule_items(self) -> list[dict[str, Any]]:
         raw_rules = self._raw_rules()
@@ -179,8 +401,7 @@ class GroupKeywordReplyPlugin(Star):
         return [item for item in data if isinstance(item, dict)]
 
     def _save_rule_items(self, items: list[dict[str, Any]]) -> None:
-        self._rules_cache_key = ""
-        self._rules_cache = []
+        self._clear_rules_cache()
         self._save_plugin_config(
             {"rules_json": json.dumps(items, ensure_ascii=False, indent=2)}
         )
@@ -209,76 +430,57 @@ class GroupKeywordReplyPlugin(Star):
         if cache_key == self._rules_cache_key:
             return self._rules_cache
 
-        parsed_rules = self._raw_rule_items()
         rules: list[ReplyRule] = []
-
-        for index, item in enumerate(parsed_rules):
-            enabled = self._parse_bool(item.get("enabled", True), True)
-            if not enabled:
+        for index, raw_item in enumerate(self._raw_rule_items()):
+            try:
+                item = self._sanitize_rule_item(raw_item, index)
+            except ValueError as exc:
+                logger.warning(str(exc))
                 continue
 
-            name = str(item.get("name") or f"rule_{index + 1}").strip()
-            pattern = str(item.get("pattern") or "").strip()
-            reply = str(item.get("reply") or "").strip()
-            if not pattern or not reply:
-                logger.warning(
-                    f"GroupKeywordReply skipped rule '{name}' because pattern or reply is empty."
-                )
+            if not item["enabled"]:
                 continue
-
-            match_type = self._normalize_match_type(item.get("match_type", "keyword"))
-            ignore_case = self._parse_bool(item.get("ignore_case", True), True)
-            continue_after_reply = self._parse_bool(
-                item.get("continue_after_reply", False), False
-            )
-            groups = self._parse_groups(item.get("groups", []))
-            exclude_keywords = self._parse_groups(item.get("exclude_keywords", []))
-
-            try:
-                cooldown_seconds = max(float(item.get("cooldown_seconds", 0)), 0.0)
-            except (TypeError, ValueError):
-                cooldown_seconds = 0.0
-
-            try:
-                priority = int(item.get("priority", index + 1))
-            except (TypeError, ValueError):
-                priority = index + 1
-
-            try:
-                max_reply_count = max(int(item.get("max_reply_count", 0)), 0)
-            except (TypeError, ValueError):
-                max_reply_count = 0
-
-            try:
-                reply_count = max(int(item.get("reply_count", 0)), 0)
-            except (TypeError, ValueError):
-                reply_count = 0
 
             compiled_pattern: re.Pattern[str] | None = None
-            if match_type == "regex":
-                flags = re.IGNORECASE if ignore_case else 0
+            if item["match_type"] == "regex":
+                flags = re.IGNORECASE if item["ignore_case"] else 0
                 try:
-                    compiled_pattern = re.compile(pattern, flags)
+                    compiled_pattern = re.compile(item["pattern"], flags)
                 except re.error as exc:
                     logger.warning(
-                        f"GroupKeywordReply skipped regex rule '{name}' because it is invalid: {exc}"
+                        f"GroupKeywordReply skipped regex rule '{item['name']}' because it is invalid: {exc}"
                     )
                     continue
 
+            branch_replies = [
+                ReplyBranch(
+                    title=str(branch.get("title") or "").strip()
+                    or f"扩展回复 {branch_index + 1}",
+                    keywords=self._parse_groups(branch.get("keywords", [])),
+                    reply=str(branch.get("reply") or "").strip(),
+                    match_policy=self._normalize_match_policy(
+                        branch.get("match_policy", "any")
+                    ),
+                )
+                for branch_index, branch in enumerate(item.get("branch_replies", []))
+            ]
+
             rules.append(
                 ReplyRule(
-                    name=name,
-                    pattern=pattern,
-                    reply=reply,
-                    match_type=match_type,
-                    groups=groups,
-                    exclude_keywords=exclude_keywords,
-                    ignore_case=ignore_case,
-                    continue_after_reply=continue_after_reply,
-                    cooldown_seconds=cooldown_seconds,
-                    priority=priority,
-                    max_reply_count=max_reply_count,
-                    reply_count=reply_count,
+                    name=item["name"],
+                    pattern=item["pattern"],
+                    reply=item["reply"],
+                    match_type=item["match_type"],
+                    groups=item["groups"],
+                    exclude_keywords=item["exclude_keywords"],
+                    ignore_case=item["ignore_case"],
+                    continue_after_reply=item["continue_after_reply"],
+                    cooldown_seconds=item["cooldown_seconds"],
+                    priority=item["priority"],
+                    max_reply_count=item["max_reply_count"],
+                    reply_count=item["reply_count"],
+                    required_keywords=item["required_keywords"],
+                    branch_replies=branch_replies,
                     compiled_pattern=compiled_pattern,
                 )
             )
@@ -291,9 +493,11 @@ class GroupKeywordReplyPlugin(Star):
     def _build_reply_text(
         self,
         rule: ReplyRule,
+        reply_template: str,
         event: AstrMessageEvent,
         original_text: str,
         match_result: re.Match[str] | bool,
+        branch: ReplyBranch | None = None,
     ) -> str:
         values: SafeFormatDict = SafeFormatDict(
             {
@@ -304,6 +508,9 @@ class GroupKeywordReplyPlugin(Star):
                 "group_id": event.get_group_id(),
                 "platform_name": event.get_platform_name(),
                 "platform_id": event.get_platform_id(),
+                "required_keywords": "、".join(rule.required_keywords),
+                "branch_name": branch.title if branch else "",
+                "branch_keywords": "、".join(branch.keywords) if branch else "",
             }
         )
 
@@ -314,7 +521,7 @@ class GroupKeywordReplyPlugin(Star):
             for key, value in match_result.groupdict().items():
                 values[key] = value or ""
 
-        return rule.reply.format_map(values)
+        return reply_template.format_map(values)
 
     def _cooldown_key(self, group_id: str, rule_name: str) -> str:
         return f"{group_id}:{rule_name}"
@@ -336,13 +543,35 @@ class GroupKeywordReplyPlugin(Star):
             return True
         return group_id in rule.groups
 
+    def _normalize_text_for_match(self, text: str, ignore_case: bool) -> str:
+        return text.casefold() if ignore_case else text
+
     def _has_excluded_keyword(self, rule: ReplyRule, text: str) -> bool:
-        source = text.casefold() if rule.ignore_case else text
+        source = self._normalize_text_for_match(text, rule.ignore_case)
         for keyword in rule.exclude_keywords:
-            target = keyword.casefold() if rule.ignore_case else keyword
+            target = self._normalize_text_for_match(keyword, rule.ignore_case)
             if target and target in source:
                 return True
         return False
+
+    def _message_contains_keywords(
+        self, text: str, keywords: list[str], ignore_case: bool, match_policy: str = "all"
+    ) -> bool:
+        if not keywords:
+            return False
+
+        source = self._normalize_text_for_match(text, ignore_case)
+        targets = [
+            self._normalize_text_for_match(keyword, ignore_case)
+            for keyword in keywords
+            if str(keyword).strip()
+        ]
+        if not targets:
+            return False
+
+        if self._normalize_match_policy(match_policy) == "any":
+            return any(target in source for target in targets)
+        return all(target in source for target in targets)
 
     def _match_rule(self, rule: ReplyRule, text: str) -> re.Match[str] | bool:
         if rule.match_type == "regex":
@@ -350,79 +579,37 @@ class GroupKeywordReplyPlugin(Star):
                 return False
             return rule.compiled_pattern.search(text) or False
 
-        source = text.casefold() if rule.ignore_case else text
-        pattern = rule.pattern.casefold() if rule.ignore_case else rule.pattern
-
         if rule.match_type == "exact":
+            source = self._normalize_text_for_match(text, rule.ignore_case)
+            pattern = self._normalize_text_for_match(rule.pattern, rule.ignore_case)
             return source == pattern
-        return pattern in source
+        return self._message_contains_keywords(
+            text,
+            rule.required_keywords or ([rule.pattern] if rule.pattern else []),
+            rule.ignore_case,
+            "all",
+        )
+
+    def _select_reply_branch(self, rule: ReplyRule, text: str) -> ReplyBranch | None:
+        if rule.match_type != "keyword":
+            return None
+
+        for branch in rule.branch_replies:
+            if self._message_contains_keywords(
+                text, branch.keywords, rule.ignore_case, branch.match_policy
+            ):
+                return branch
+        return None
 
     async def _handle_index(self, request: web.Request) -> web.StreamResponse:
         index_path = self.webui_dir / "index.html"
         if not index_path.exists():
             raise web.HTTPNotFound()
-        return web.FileResponse(index_path)
-
-    async def _handle_state(self, request: web.Request) -> web.Response:
-        payload = {
-            "enabled": self._plugin_enabled(),
-            "ignore_self_messages": self._ignore_self_messages(),
-            "group_whitelist": self._group_whitelist(),
-            "rules": self._raw_rule_items(),
-            "webui_url": self._webui_url(),
-        }
-        return web.json_response(payload)
-
-    async def _handle_save(self, request: web.Request) -> web.Response:
-        try:
-            payload = await request.json()
-        except Exception:
-            return web.json_response({"ok": False, "message": "请求体不是合法 JSON。"}, status=400)
-
-        enabled = self._parse_bool(payload.get("enabled", True), True)
-        ignore_self = self._parse_bool(payload.get("ignore_self_messages", True), True)
-        whitelist = self._parse_groups(payload.get("group_whitelist", []))
-        rules = payload.get("rules", [])
-
-        if not isinstance(rules, list):
-            return web.json_response({"ok": False, "message": "rules 必须是数组。"}, status=400)
-
-        for item in rules:
-            if not isinstance(item, dict):
-                return web.json_response({"ok": False, "message": "规则项必须是对象。"}, status=400)
-            if not str(item.get("name") or "").strip():
-                return web.json_response({"ok": False, "message": "规则名称不能为空。"}, status=400)
-            if not str(item.get("pattern") or "").strip():
-                return web.json_response({"ok": False, "message": f"规则 {item.get('name')} 的匹配内容不能为空。"}, status=400)
-            if not str(item.get("reply") or "").strip():
-                return web.json_response({"ok": False, "message": f"规则 {item.get('name')} 的回复内容不能为空。"}, status=400)
-            try:
-                max_reply_count = max(int(item.get("max_reply_count", 0)), 0)
-                item["max_reply_count"] = max_reply_count
-            except (TypeError, ValueError):
-                return web.json_response({"ok": False, "message": f"规则 {item.get('name')} 的最大回复次数必须是数字。"}, status=400)
-            try:
-                reply_count = max(int(item.get("reply_count", 0)), 0)
-                item["reply_count"] = reply_count
-            except (TypeError, ValueError):
-                item["reply_count"] = 0
-            if self._normalize_match_type(item.get("match_type", "keyword")) == "regex":
-                try:
-                    re.compile(str(item.get("pattern") or ""))
-                except re.error as exc:
-                    return web.json_response({"ok": False, "message": f"规则 {item.get('name')} 的正则无效：{exc}"}, status=400)
-
-        self._save_plugin_config(
-            {
-                "enabled": enabled,
-                "ignore_self_messages": ignore_self,
-                "group_whitelist": ",".join(whitelist),
-                "rules_json": json.dumps(rules, ensure_ascii=False, indent=2),
-            }
+        return web.Response(
+            text=index_path.read_text(encoding="utf-8"),
+            content_type="text/html",
+            charset="utf-8",
         )
-        self._rules_cache_key = ""
-        self._rules_cache = []
-        return web.json_response({"ok": True, "message": "保存成功。"})
 
     def _create_web_application(self) -> web.Application:
         app = web.Application()
@@ -434,6 +621,58 @@ class GroupKeywordReplyPlugin(Star):
             ]
         )
         return app
+
+    async def _handle_state(self, request: web.Request) -> web.Response:
+        payload = {
+            "enabled": self._plugin_enabled(),
+            "ignore_self_messages": self._ignore_self_messages(),
+            "group_whitelist": self._group_whitelist(),
+            "rules": [
+                self._prepare_rule_for_editor(item, index)
+                for index, item in enumerate(self._raw_rule_items())
+            ],
+            "webui_url": self._webui_url(),
+        }
+        return web.json_response(payload)
+
+    async def _handle_save(self, request: web.Request) -> web.Response:
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response(
+                {"ok": False, "message": "提交的数据不是合法的 JSON。"},
+                status=400,
+            )
+
+        enabled = self._parse_bool(payload.get("enabled", True), True)
+        ignore_self = self._parse_bool(payload.get("ignore_self_messages", True), True)
+        whitelist = self._parse_groups(payload.get("group_whitelist", []))
+        rules = payload.get("rules", [])
+
+        if not isinstance(rules, list):
+            return web.json_response(
+                {"ok": False, "message": "规则列表格式不正确，请刷新页面后重试。"},
+                status=400,
+            )
+
+        try:
+            normalized_rules = [
+                self._sanitize_rule_item(item, index)
+                for index, item in enumerate(rules)
+            ]
+        except ValueError as exc:
+            return web.json_response({"ok": False, "message": str(exc)}, status=400)
+
+        self._save_plugin_config(
+            {
+                "enabled": enabled,
+                "ignore_self_messages": ignore_self,
+                "group_whitelist": ",".join(whitelist),
+                "rules_json": json.dumps(normalized_rules, ensure_ascii=False, indent=2),
+            }
+        )
+        self._clear_rules_cache()
+        return web.json_response({"ok": True, "message": "保存成功。"})
 
     async def _start_webui_server(self) -> None:
         async with self._web_lock:
@@ -474,7 +713,10 @@ class GroupKeywordReplyPlugin(Star):
     async def open_panel(
         self, event: AstrMessageEvent
     ) -> AsyncGenerator[MessageEventResult, None]:
-        yield event.plain_result(f"关键词回复管理面板：\n{self._webui_url()}").use_t2i(False)
+        yield event.plain_result(
+            f"关键词回复面板：\n{self._webui_url()}\n"
+            "复杂规则更推荐直接在面板里配置。"
+        ).use_t2i(False)
 
     @keyword_reply.command("状态", alias={"关键词回复状态"})
     async def keyword_reply_status(
@@ -483,20 +725,42 @@ class GroupKeywordReplyPlugin(Star):
         rules = self._load_rules()
         whitelist = self._group_whitelist()
         lines = [
-            f"插件启用: {'是' if self._plugin_enabled() else '否'}",
-            f"忽略机器人自身消息: {'是' if self._ignore_self_messages() else '否'}",
-            f"插件级白名单: {','.join(whitelist) if whitelist else '未设置'}",
-            f"已加载启用规则数: {len(rules)}",
-            f"面板地址: {self._webui_url()}",
+            "关键词回复当前状态：",
+            f"开关：{'开启' if self._plugin_enabled() else '关闭'}",
+            f"忽略机器人自己的消息：{'是' if self._ignore_self_messages() else '否'}",
+            f"插件总范围：{','.join(whitelist) if whitelist else '所有群都可触发'}",
+            f"已启用规则数：{len(rules)}",
+            f"面板地址：{self._webui_url()}",
         ]
         if rules:
-            lines.append("规则列表:")
+            lines.append("已启用规则：")
             for rule in rules[:10]:
                 group_text = ",".join(rule.groups) if rule.groups else "全部群"
-                exclude_text = ",".join(rule.exclude_keywords) if rule.exclude_keywords else "无"
-                limit_text = "不限" if rule.max_reply_count <= 0 else f"{rule.reply_count}/{rule.max_reply_count}"
+                exclude_text = (
+                    ",".join(rule.exclude_keywords) if rule.exclude_keywords else "无"
+                )
+                limit_text = (
+                    "不限"
+                    if rule.max_reply_count <= 0
+                    else f"{rule.reply_count}/{rule.max_reply_count}"
+                )
+                required_keywords = rule.required_keywords or (
+                    [rule.pattern] if rule.pattern else []
+                )
+                if rule.match_type == "keyword":
+                    trigger_text = (
+                        f"必备词：{'、'.join(required_keywords)}"
+                        if required_keywords
+                        else "必备词：未填写"
+                    )
+                    if rule.branch_replies:
+                        trigger_text += f"，扩展回复 {len(rule.branch_replies)} 条"
+                else:
+                    trigger_text = (
+                        f"{self._describe_match_type(rule.match_type)}：{rule.pattern}"
+                    )
                 lines.append(
-                    f"- {rule.name} [{rule.match_type}] -> {group_text} | 排除 {exclude_text} | 次数 {limit_text}"
+                    f"- {rule.name} | {trigger_text} | 范围 {group_text} | 排除 {exclude_text} | 次数 {limit_text}"
                 )
         yield event.plain_result("\n".join(lines)).use_t2i(False)
 
@@ -514,6 +778,10 @@ class GroupKeywordReplyPlugin(Star):
             name = str(item.get("name") or "").strip()
             match_type = self._normalize_match_type(item.get("match_type", "keyword"))
             pattern = str(item.get("pattern") or "").strip()
+            required_keywords = self._parse_groups(item.get("required_keywords", []))
+            branch_replies = item.get("branch_replies", [])
+            if not isinstance(branch_replies, list):
+                branch_replies = []
             enabled = self._parse_bool(item.get("enabled", True), True)
             groups = self._parse_groups(item.get("groups", []))
             excludes = self._parse_groups(item.get("exclude_keywords", []))
@@ -525,10 +793,23 @@ class GroupKeywordReplyPlugin(Star):
                 max_reply_count = max(int(item.get("max_reply_count", 0)), 0)
             except (TypeError, ValueError):
                 max_reply_count = 0
-            limit_text = f"{reply_count}/{max_reply_count}" if max_reply_count > 0 else f"{reply_count}/不限"
+            limit_text = (
+                f"{reply_count}/{max_reply_count}"
+                if max_reply_count > 0
+                else f"{reply_count}/不限"
+            )
+            if match_type == "keyword":
+                keywords = required_keywords or ([pattern] if pattern else [])
+                trigger_text = (
+                    f"必备词：{'、'.join(keywords)}" if keywords else "必备词：未填写"
+                )
+                if branch_replies:
+                    trigger_text += f"，扩展回复 {len(branch_replies)} 条"
+            else:
+                trigger_text = f"{self._describe_match_type(match_type)}：{pattern}"
             lines.append(
-                f"- {name} | {'开' if enabled else '关'} | {match_type} | {pattern} | "
-                f"{','.join(groups) if groups else '全部群'} | 排除 {','.join(excludes) if excludes else '无'} | {limit_text}"
+                f"- {name} | {'开启' if enabled else '关闭'} | {trigger_text} | "
+                f"范围 {','.join(groups) if groups else '全部群'} | 排除 {','.join(excludes) if excludes else '无'} | 次数 {limit_text}"
             )
         yield event.plain_result("\n".join(lines)).use_t2i(False)
 
@@ -541,7 +822,7 @@ class GroupKeywordReplyPlugin(Star):
         parts = [part.strip() for part in text.split("|")]
         if len(parts) < 4:
             yield event.plain_result(
-                "用法：/关键词回复 添加 名称 | keyword/exact/regex | 匹配内容 | 回复内容 | 群号1,群号2 | 开 | 次数上限 | 排除词1,排除词2"
+                "用法：/关键词回复 添加 名称 | 包含/整句/正则 | 触发内容 | 回复内容 | 群号1,群号2 | 开/关 | 次数上限 | 排除词1,排除词2"
             )
             return
 
@@ -580,7 +861,9 @@ class GroupKeywordReplyPlugin(Star):
                 "exclude_keywords": exclude_keywords,
                 "match_type": match_type,
                 "pattern": pattern,
+                "required_keywords": [pattern] if match_type == "keyword" else [],
                 "reply": reply,
+                "branch_replies": [],
                 "ignore_case": True,
                 "continue_after_reply": False,
                 "cooldown_seconds": 0,
@@ -814,11 +1097,12 @@ class GroupKeywordReplyPlugin(Star):
         self, event: AstrMessageEvent
     ) -> AsyncGenerator[MessageEventResult, None]:
         yield event.plain_result(
-            "关键词回复命令：\n"
+            "推荐先用面板配置：\n"
             "/关键词回复 面板\n"
+            "\n常用命令：\n"
             "/关键词回复 状态\n"
             "/关键词回复 列表\n"
-            "/关键词回复 添加 名称 | keyword/exact/regex | 匹配内容 | 回复内容 | 群号1,群号2 | 开\n"
+            "/关键词回复 添加 名称 | 包含/整句/正则 | 触发内容 | 回复内容 | 群号1,群号2 | 开/关 | 次数上限 | 排除词1,排除词2\n"
             "/关键词回复 删除 规则名\n"
             "/关键词回复 开关 规则名 开|关\n"
             "/关键词回复 回复 规则名 新回复内容\n"
@@ -828,7 +1112,10 @@ class GroupKeywordReplyPlugin(Star):
             "/关键词回复 群 规则名 群号1,群号2\n"
             "/关键词回复 白名单 查看\n"
             "/关键词回复 白名单 添加 群号\n"
-            "/关键词回复 白名单 删除 群号"
+            "/关键词回复 白名单 删除 群号\n"
+            "\n说明：\n"
+            "1. “包含”会把你填的内容当作必备关键词。\n"
+            "2. 需要“必备关键词 + 不同扩展关键词回不同内容”时，请直接用面板。"
         ).use_t2i(False)
 
     @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
@@ -868,7 +1155,14 @@ class GroupKeywordReplyPlugin(Star):
             if self._is_reply_limit_reached(rule):
                 continue
 
-            reply_text = self._build_reply_text(rule, event, message_text, match_result).strip()
+            branch = self._select_reply_branch(rule, message_text)
+            reply_template = branch.reply if branch else rule.reply
+            if not reply_template.strip():
+                continue
+
+            reply_text = self._build_reply_text(
+                rule, reply_template, event, message_text, match_result, branch
+            ).strip()
             if not reply_text:
                 logger.warning(
                     f"GroupKeywordReply matched rule '{rule.name}' but reply text is empty."

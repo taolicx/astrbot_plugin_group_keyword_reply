@@ -2,38 +2,38 @@
   "enabled": {
     "description": "启用插件",
     "type": "bool",
-    "hint": "关闭后，插件不会处理任何群消息。",
+    "hint": "关闭后，这个插件不会处理任何群消息。",
     "default": true
   },
   "ignore_self_messages": {
-    "description": "忽略机器人自身消息",
+    "description": "忽略机器人自己的消息",
     "type": "bool",
-    "hint": "建议保持开启，避免机器人自己的消息再次触发规则形成循环。",
+    "hint": "建议保持开启，避免机器人自己的回复再次触发规则。",
     "default": true
   },
   "group_whitelist": {
     "description": "插件级群白名单",
     "type": "text",
-    "hint": "多个群号用逗号分隔。留空表示所有群都可触发。",
+    "hint": "多个群号用逗号分开。留空表示所有群都能触发。",
     "default": ""
   },
   "webui_host": {
-    "description": "WebUI 监听地址",
+    "description": "面板监听地址",
     "type": "string",
-    "hint": "默认 127.0.0.1，仅本机访问。",
+    "hint": "默认 127.0.0.1，只允许本机访问。",
     "default": "127.0.0.1"
   },
   "webui_port": {
-    "description": "WebUI 端口",
+    "description": "面板端口",
     "type": "int",
     "hint": "默认 18082。",
     "default": 18082
   },
   "rules_json": {
-    "description": "回复规则 JSON",
+    "description": "规则 JSON",
     "type": "text",
-    "hint": "JSON 数组。每项支持：name、enabled、groups、exclude_keywords、match_type(keyword/exact/regex)、pattern、reply、ignore_case、continue_after_reply、cooldown_seconds、priority、max_reply_count、reply_count。reply 可用变量：{message} {sender_id} {sender_name} {group_id} {rule_name}；正则还支持 {match} {g1} 以及命名分组变量。exclude_keywords 表示消息中同时包含这些词时不回复。max_reply_count 为 0 表示不限次数。",
-    "default": "[\n  {\n    \"name\": \"广告提醒\",\n    \"enabled\": true,\n    \"groups\": [\"123456789\"],\n    \"exclude_keywords\": [\"白名单\", \"例外\"],\n    \"match_type\": \"keyword\",\n    \"pattern\": \"代挂\",\n    \"reply\": \"本群禁止发布代挂广告，请遵守群规。\",\n    \"ignore_case\": true,\n    \"continue_after_reply\": false,\n    \"cooldown_seconds\": 10,\n    \"priority\": 1,\n    \"max_reply_count\": 2,\n    \"reply_count\": 0\n  },\n  {\n    \"name\": \"新人欢迎\",\n    \"enabled\": false,\n    \"groups\": [],\n    \"exclude_keywords\": [],\n    \"match_type\": \"regex\",\n    \"pattern\": \"^我是(?P<name>.+)$\",\n    \"reply\": \"收到，欢迎你 {name}。\",\n    \"ignore_case\": true,\n    \"continue_after_reply\": false,\n    \"cooldown_seconds\": 0,\n    \"priority\": 2,\n    \"max_reply_count\": 0,\n    \"reply_count\": 0\n  }\n]",
+    "hint": "建议直接使用插件自带的面板配置。规则支持 required_keywords（必备关键词）和 branch_replies（扩展回复）。关键词模式下，消息会先命中必备关键词，再从上到下判断扩展回复；如果没有命中扩展回复，就使用 reply 作为基础回复。reply 可用变量：{message} {sender_id} {sender_name} {group_id} {rule_name}；扩展回复额外支持 {branch_name} {branch_keywords}；正则匹配还支持 {match} {g1} 以及命名分组变量。",
+    "default": "[\n  {\n    \"name\": \"售后咨询\",\n    \"enabled\": true,\n    \"groups\": [],\n    \"exclude_keywords\": [],\n    \"match_type\": \"keyword\",\n    \"pattern\": \"订单\",\n    \"required_keywords\": [\"订单\"],\n    \"reply\": \"你是想查订单、催发货还是申请退款？\",\n    \"branch_replies\": [\n      {\n        \"title\": \"发货问题\",\n        \"keywords\": [\"发货\", \"物流\"],\n        \"reply\": \"发货问题请把订单号发给我，我来帮你查。\",\n        \"match_policy\": \"any\"\n      },\n      {\n        \"title\": \"退款问题\",\n        \"keywords\": [\"退款\", \"退货\"],\n        \"reply\": \"退款问题请先提供订单号和退款原因。\",\n        \"match_policy\": \"any\"\n      }\n    ],\n    \"ignore_case\": true,\n    \"continue_after_reply\": false,\n    \"cooldown_seconds\": 0,\n    \"priority\": 1,\n    \"max_reply_count\": 0,\n    \"reply_count\": 0\n  }\n]",
     "editor_mode": true,
     "editor_language": "json",
     "editor_theme": "vs-light"

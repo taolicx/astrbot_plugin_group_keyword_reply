@@ -3,395 +3,166 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>关键词回复管理面板</title>
+  <title>自动回复面板</title>
   <style>
-    :root {
-      --bg: #f4f6fb;
-      --card: #ffffff;
-      --line: #d9e0ee;
-      --text: #1f2937;
-      --muted: #6b7280;
-      --accent: #2563eb;
-      --accent-dark: #1d4ed8;
-      --danger: #dc2626;
-      --success: #059669;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-      background: linear-gradient(180deg, #eef4ff 0%, var(--bg) 100%);
-      color: var(--text);
-    }
-    .shell {
-      max-width: 1180px;
-      margin: 0 auto;
-      padding: 24px 16px 40px;
-    }
-    .hero {
-      display: flex;
-      justify-content: space-between;
-      gap: 16px;
-      align-items: end;
-      margin-bottom: 18px;
-    }
-    .hero h1 {
-      margin: 0;
-      font-size: 32px;
-    }
-    .hero p {
-      margin: 8px 0 0;
-      color: var(--muted);
-    }
-    .status-box {
-      min-width: 260px;
-      background: rgba(255,255,255,.86);
-      border: 1px solid var(--line);
-      border-radius: 16px;
-      padding: 12px 14px;
-    }
-    .status-box strong {
-      display: block;
-      margin-bottom: 6px;
-    }
-    .notice {
-      display: none;
-      margin-bottom: 16px;
-      padding: 12px 14px;
-      border-radius: 14px;
-      border: 1px solid var(--line);
-      background: #fff;
-    }
-    .notice.show { display: block; }
-    .notice.error { border-color: #f0b2b2; color: #8b1d1d; background: #fff4f4; }
-    .notice.success { border-color: #9cd8c0; color: #0f6b49; background: #f3fff9; }
-    .grid {
-      display: grid;
-      grid-template-columns: 320px 1fr;
-      gap: 18px;
-    }
-    .panel {
-      background: rgba(255,255,255,.92);
-      border: 1px solid var(--line);
-      border-radius: 18px;
-      padding: 16px;
-      box-shadow: 0 10px 28px rgba(37, 99, 235, .06);
-    }
-    .panel h2 {
-      margin: 0 0 12px;
-      font-size: 18px;
-    }
-    label {
-      display: block;
-      margin-bottom: 12px;
-      font-size: 13px;
-      color: var(--muted);
-    }
-    input[type="text"],
-    input[type="number"],
-    textarea,
-    select {
-      width: 100%;
-      margin-top: 6px;
-      padding: 10px 12px;
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      background: #fff;
-      color: var(--text);
-      font: inherit;
-    }
-    textarea {
-      min-height: 96px;
-      resize: vertical;
-    }
-    .check {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 12px;
-      color: var(--text);
-    }
-    .actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-top: 14px;
-    }
-    button {
-      border: 0;
-      border-radius: 999px;
-      padding: 10px 16px;
-      background: var(--accent);
-      color: #fff;
-      font: inherit;
-      cursor: pointer;
-    }
-    button:hover { background: var(--accent-dark); }
-    button.secondary { background: #94a3b8; }
-    button.danger { background: var(--danger); }
-    .rule-toolbar {
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      align-items: center;
-      margin-bottom: 12px;
-    }
-    .rule-list {
-      display: grid;
-      gap: 14px;
-    }
-    .rule-card {
-      border: 1px solid var(--line);
-      border-radius: 16px;
-      padding: 14px;
-      background: #fff;
-    }
-    .rule-head {
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      align-items: center;
-      margin-bottom: 10px;
-    }
-    .rule-head strong { font-size: 16px; }
-    .rule-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 12px;
-    }
-    .rule-grid .wide { grid-column: 1 / -1; }
-    .muted {
-      color: var(--muted);
-      font-size: 12px;
-    }
-    @media (max-width: 900px) {
-      .grid { grid-template-columns: 1fr; }
-      .hero { flex-direction: column; align-items: stretch; }
-      .rule-grid { grid-template-columns: 1fr; }
-    }
+    :root{--bg:#f6efe6;--card:#fffaf4;--line:#e7d7c4;--text:#202734;--muted:#6c7480;--accent:#0f766e;--accent2:#c57b2a;--danger:#bb1e1e;--shadow:0 20px 45px rgba(65,48,29,.08)}
+    *{box-sizing:border-box} body{margin:0;font-family:"HarmonyOS Sans SC","Microsoft YaHei","PingFang SC",sans-serif;color:var(--text);background:radial-gradient(circle at top left,rgba(197,123,42,.14),transparent 26%),radial-gradient(circle at top right,rgba(15,118,110,.12),transparent 24%),linear-gradient(180deg,#fbf6ef 0%,var(--bg) 100%)}
+    .wrap{max-width:1240px;margin:0 auto;padding:24px 16px 40px}.notice{display:none;padding:12px 14px;border-radius:18px;margin-bottom:16px;border:1px solid var(--line);background:#fff}.notice.show{display:block}.notice.error{background:#fff1ef;color:#8a1f1f;border-color:#efb2ad}.notice.success{background:#f1fffb;color:#0a5e57;border-color:#94d7ca}
+    .hero,.layout{display:grid;gap:16px}.hero{grid-template-columns:1.2fr .8fr;margin-bottom:18px}.layout{grid-template-columns:320px 1fr}.card{background:rgba(255,250,244,.88);border:1px solid rgba(255,255,255,.7);backdrop-filter:blur(8px);border-radius:26px;box-shadow:var(--shadow);padding:22px}
+    .eyebrow{margin:0 0 8px;color:var(--accent2);font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}.hero h1{margin:0;font-size:clamp(30px,4.2vw,40px);line-height:1.08}.lead,.muted{color:var(--muted);line-height:1.7}
+    .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:16px}.step{padding:12px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.7)}.step strong{display:block;font-size:14px;margin-bottom:6px}.step span{font-size:12px;color:var(--muted);line-height:1.6}
+    .actions,.head-actions,.branch-head,.toolbar{display:flex;gap:10px;flex-wrap:wrap}.actions{margin-top:16px}.toolbar{justify-content:space-between;align-items:flex-end;margin-bottom:14px}.toolbar p{margin:6px 0 0}
+    label.field{display:block;margin-bottom:12px}label.field>span{display:block;margin-bottom:7px;font-size:14px;font-weight:700}label.field small{display:block;margin-top:6px;font-size:12px;color:var(--muted);line-height:1.6}
+    input[type="text"],input[type="number"],textarea,select{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.94);font:inherit;color:var(--text)} textarea{min-height:86px;resize:vertical}
+    .check{display:flex;align-items:center;gap:10px;margin:12px 0;font-size:14px;font-weight:600}.grid2,.grid4{display:grid;gap:12px}.grid2{grid-template-columns:repeat(2,1fr)}.grid4{grid-template-columns:repeat(4,1fr)}
+    button{border:0;border-radius:14px;padding:11px 15px;background:var(--accent);color:#fff;font:inherit;font-weight:700;cursor:pointer}.secondary{background:#fff;color:var(--accent);border:1px solid #b8ddd7}.ghost{background:transparent;color:var(--muted);border:1px solid var(--line)}.danger{background:#fff;color:var(--danger);border:1px solid #efb2ad}
+    .tip{margin-top:18px;padding:14px;border-radius:18px;border:1px solid var(--line);background:rgba(255,255,255,.72)} .tip strong{display:block;margin-bottom:8px}
+    .tip ul{margin:0;padding-left:18px;color:var(--muted);font-size:13px;line-height:1.8}
+    .list{display:grid;gap:14px}.rule{padding:16px;border:1px solid var(--line);border-radius:22px;background:rgba(255,255,255,.82)}.badges{display:flex;gap:8px;flex-wrap:wrap}.badge{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;font-size:12px;font-weight:800}.badge.mode{background:#dff7f3;color:#0b6058}.badge.branch{background:#fff2df;color:#8a5a1c}
+    .rule-title{display:block;margin:8px 0 4px;font-size:22px}.head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:14px}.section{margin-top:14px;padding-top:14px;border-top:1px solid rgba(231,215,196,.7)}.section h3{margin:0 0 10px;font-size:15px}
+    .panel-box{padding:13px;border:1px solid #dcc7ab;border-radius:18px;background:rgba(255,255,255,.7)}.panel-box p{margin:4px 0 0;color:var(--muted);font-size:12px;line-height:1.6}.branch-list{display:grid;gap:10px;margin-top:10px}.branch{padding:12px;border:1px solid var(--line);border-radius:18px;background:#fffdf9}.branch-head{justify-content:space-between;align-items:center;margin-bottom:8px}.branch-head strong{font-size:14px}.hidden{display:none}.empty{padding:12px;border:1px dashed #d7bf9e;border-radius:16px;color:var(--muted);font-size:13px;background:rgba(255,255,255,.55)}
+    details{margin-top:14px;padding:12px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.55)} summary{cursor:pointer;font-weight:700}
+    @media (max-width:980px){.hero,.layout,.steps,.grid2,.grid4{grid-template-columns:1fr}.head,.toolbar,.branch-head{align-items:stretch}}
   </style>
 </head>
 <body>
-  <div class="shell">
+  <div class="wrap">
     <div id="notice" class="notice"></div>
-
     <section class="hero">
-      <div>
-        <h1>关键词回复管理面板</h1>
-        <p>在这里直接管理规则、插件开关和群白名单，不用再手改 JSON。</p>
+      <div class="card">
+        <p class="eyebrow">群消息自动回复</p>
+        <h1>先填必备关键词，再分不同回复</h1>
+        <p class="lead">适合日常群自动回复。不会写正则也能直接用，面板会自动帮你整理配置。</p>
+        <div class="steps">
+          <div class="step"><strong>1. 必备关键词</strong><span>这些词都出现，才会继续判断。</span></div>
+          <div class="step"><strong>2. 扩展回复</strong><span>再按不同关键词回不同内容。</span></div>
+          <div class="step"><strong>3. 保存即可</strong><span>不用你自己手改 JSON。</span></div>
+        </div>
       </div>
-      <div class="status-box">
-        <strong>当前面板地址</strong>
-        <div id="current-url">-</div>
+      <div class="card">
+        <div class="muted">当前面板地址</div>
+        <div id="current-url" style="margin-top:8px;font-weight:700;word-break:break-all"></div>
+        <div class="actions">
+          <button id="save-all" type="button">保存全部设置</button>
+          <button id="insert-example" class="secondary" type="button">插入示例</button>
+        </div>
       </div>
     </section>
 
-    <div class="grid">
-      <aside class="panel">
-        <h2>插件设置</h2>
-
-        <label class="check">
-          <input id="enabled" type="checkbox">
-          <span>启用插件</span>
+    <section class="layout">
+      <aside class="card">
+        <h2 style="margin:0 0 10px">整体设置</h2>
+        <p class="muted">先决定整套自动回复在哪些地方生效。</p>
+        <label class="check"><input id="enabled" type="checkbox"><span>启用这套自动回复</span></label>
+        <label class="check"><input id="ignore-self" type="checkbox"><span>忽略机器人自己发的消息</span></label>
+        <label class="field">
+          <span>只在这些群启用（可不填）</span>
+          <textarea id="group-whitelist" placeholder="多个群号用逗号分开，例如：123456,234567"></textarea>
+          <small>留空表示所有群都可以触发。</small>
         </label>
-
-        <label class="check">
-          <input id="ignore-self" type="checkbox">
-          <span>忽略机器人自身消息</span>
-        </label>
-
-        <label>
-          插件级群白名单
-          <textarea id="group-whitelist" placeholder="多个群号用逗号分隔，为空表示所有群可触发"></textarea>
-        </label>
-
-        <div class="actions">
-          <button id="save-settings" type="button">保存全部设置</button>
-        </div>
-
-        <div class="muted" style="margin-top:12px;">
-          白名单为空：所有群可触发。<br>
-          白名单不为空：只有白名单里的群可触发。
+        <div class="tip">
+          <strong>推荐用法</strong>
+          <ul>
+            <li>不确定怎么选时，把“触发方式”保持为“关键词包含”。</li>
+            <li>基础回复是兜底，扩展回复是按不同情况区分内容。</li>
+            <li>扩展回复会从上往下判断，命中第一条就回复它。</li>
+          </ul>
         </div>
       </aside>
 
-      <main class="panel">
-        <div class="rule-toolbar">
-          <h2>规则列表</h2>
-          <button id="add-rule" type="button">新增规则</button>
+      <main class="card">
+        <div class="toolbar">
+          <div>
+            <h2 style="margin:0">回复规则</h2>
+            <p class="muted">每条规则都可以先命中“必备关键词”，再根据不同关键词回复不同内容。</p>
+          </div>
+          <button id="add-rule" class="secondary" type="button">新增空白规则</button>
         </div>
-        <div id="rule-list" class="rule-list"></div>
+        <div id="rule-list" class="list"></div>
       </main>
-    </div>
+    </section>
   </div>
 
   <template id="rule-template">
-    <article class="rule-card">
-      <div class="rule-head">
-        <strong class="rule-title">新规则</strong>
-        <button class="danger delete-rule" type="button">删除</button>
-      </div>
-      <div class="rule-grid">
-        <label>
-          规则名称
-          <input class="rule-name" type="text">
-        </label>
-        <label>
-          匹配方式
-          <select class="rule-match-type">
-            <option value="keyword">keyword</option>
-            <option value="exact">exact</option>
-            <option value="regex">regex</option>
-          </select>
-        </label>
-        <label class="wide">
-          匹配内容
-          <input class="rule-pattern" type="text">
-        </label>
-        <label class="wide">
-          回复内容
-          <textarea class="rule-reply"></textarea>
-        </label>
-        <label>
-          排除关键词
-          <input class="rule-exclude-keywords" type="text" placeholder="多个关键词用逗号分隔；同一条消息同时包含它们时不回复">
-        </label>
-        <label>
-          生效群
-          <input class="rule-groups" type="text" placeholder="多个群号用逗号分隔；留空表示全部群">
-        </label>
-        <label>
-          冷却秒数
-          <input class="rule-cooldown" type="number" min="0" step="1">
-        </label>
-        <label>
-          最大回复次数
-          <input class="rule-max-reply-count" type="number" min="0" step="1" placeholder="0 表示不限">
-        </label>
-        <label>
-          已回复次数
-          <input class="rule-reply-count" type="number" min="0" step="1">
-        </label>
-        <label>
-          优先级
-          <input class="rule-priority" type="number" min="1" step="1">
-        </label>
+    <article class="rule">
+      <div class="head">
         <div>
-          <label class="check"><input class="rule-enabled" type="checkbox"><span>启用规则</span></label>
-          <label class="check"><input class="rule-ignore-case" type="checkbox"><span>忽略大小写</span></label>
-          <label class="check"><input class="rule-continue" type="checkbox"><span>回复后继续后续处理</span></label>
+          <div class="badges"><span class="badge mode">关键词包含</span><span class="badge branch">扩展回复 0 条</span></div>
+          <strong class="rule-title">新规则</strong>
+          <div class="muted summary">先命中必备关键词，再从上往下找第一条命中的扩展回复。</div>
+        </div>
+        <div class="head-actions">
+          <label class="check" style="margin:0"><input class="rule-enabled" type="checkbox"><span>启用</span></label>
+          <button class="danger delete-rule" type="button">删除</button>
         </div>
       </div>
+      <div class="section">
+        <h3>怎么触发</h3>
+        <div class="grid2">
+          <label class="field"><span>规则名称</span><input class="rule-name" type="text" placeholder="例如：售后咨询"><small>方便你以后找这条规则。</small></label>
+          <label class="field"><span>触发方式</span><select class="rule-match-type"><option value="keyword">关键词包含（推荐）</option><option value="exact">整句完全一样</option><option value="regex">正则表达式</option></select><small>不确定就用第一个。</small></label>
+        </div>
+        <div class="keyword-mode">
+          <label class="field"><span>必备关键词</span><textarea class="rule-required" placeholder="多个词用逗号分开，例如：订单,售后"></textarea><small>这里的词都要出现，才会继续看下面的扩展回复。</small></label>
+          <label class="field"><span>基础回复（可不填）</span><textarea class="rule-base-reply" placeholder="只命中必备关键词，但没命中下面扩展回复时，回复这段话。"></textarea><small>只想做简单自动回复，也可以只填这里。</small></label>
+          <div class="panel-box">
+            <div class="branch-head"><div><strong>扩展回复</strong><p>在必备关键词已经命中的前提下，再按不同关键词回复不同内容。</p></div><button class="secondary add-branch" type="button">新增扩展回复</button></div>
+            <div class="branch-list"></div>
+            <div class="empty">还没有扩展回复。只做简单自动回复的话，可以只填写上面的基础回复。</div>
+          </div>
+        </div>
+        <div class="advanced-mode hidden">
+          <label class="field"><span class="pattern-label">触发内容</span><input class="rule-pattern" type="text" placeholder="请输入完整句子或正则表达式"><small class="pattern-hint">这是高级方式，只在你明确知道自己想要什么时再用。</small></label>
+          <label class="field"><span>回复内容</span><textarea class="rule-direct-reply" placeholder="命中后直接回复这段内容"></textarea></label>
+        </div>
+      </div>
+      <div class="section">
+        <h3>范围和限制</h3>
+        <div class="grid2">
+          <label class="field"><span>限定群号（可不填）</span><textarea class="rule-groups" placeholder="多个群号用逗号分开"></textarea><small>留空表示所有群都可以触发。</small></label>
+          <label class="field"><span>出现这些词时不要回复</span><textarea class="rule-excludes" placeholder="多个词用逗号分开，例如：测试,忽略"></textarea><small>同一条消息里如果出现这些词，就跳过这条规则。</small></label>
+        </div>
+        <div class="grid4">
+          <label class="field"><span>回复间隔（秒）</span><input class="rule-cooldown" type="number" min="0" step="1"><small>0 表示不限制。</small></label>
+          <label class="field"><span>最多回复几次</span><input class="rule-limit" type="number" min="0" step="1"><small>0 表示不限。</small></label>
+          <label class="field"><span>已经回复几次</span><input class="rule-count" type="number" min="0" step="1"><small>想重置就改成 0。</small></label>
+          <label class="field"><span>优先顺序</span><input class="rule-priority" type="number" min="1" step="1"><small>数字越小越先判断。</small></label>
+        </div>
+      </div>
+      <details><summary>高级设置</summary><div class="grid2" style="margin-top:12px"><label class="check"><input class="rule-ignore-case" type="checkbox"><span>忽略大小写（英文时有用）</span></label><label class="check"><input class="rule-continue" type="checkbox"><span>回复后继续交给机器人处理</span></label></div></details>
     </article>
   </template>
 
+  <template id="branch-template">
+    <div class="branch">
+      <div class="branch-head"><strong class="branch-title">扩展回复 1</strong><button class="ghost delete-branch" type="button">删除</button></div>
+      <div class="grid2">
+        <label class="field"><span>这组关键词</span><input class="branch-keywords" type="text" placeholder="例如：退款,退货"><small>多个词用逗号分开。</small></label>
+        <label class="field"><span>关键词关系</span><select class="branch-policy"><option value="any">出现任意一个就算命中</option><option value="all">这些词都出现才算命中</option></select><small>大多数情况用第一个。</small></label>
+      </div>
+      <label class="field"><span>命中这组关键词后的回复</span><textarea class="branch-reply" placeholder="例如：退款问题请先发订单号。"></textarea></label>
+    </div>
+  </template>
+
   <script>
-    const notice = document.getElementById('notice');
-    const currentUrl = document.getElementById('current-url');
-    const enabledInput = document.getElementById('enabled');
-    const ignoreSelfInput = document.getElementById('ignore-self');
-    const whitelistInput = document.getElementById('group-whitelist');
-    const ruleList = document.getElementById('rule-list');
-    const ruleTemplate = document.getElementById('rule-template');
-
-    function showNotice(message, type = 'success') {
-      notice.textContent = message;
-      notice.className = `notice show ${type}`;
-    }
-
-    function hideNotice() {
-      notice.className = 'notice';
-      notice.textContent = '';
-    }
-
-    function ruleCardToData(card, index) {
-      return {
-        name: card.querySelector('.rule-name').value.trim(),
-        enabled: card.querySelector('.rule-enabled').checked,
-        groups: card.querySelector('.rule-groups').value.split(/[,，]/).map(v => v.trim()).filter(Boolean),
-        exclude_keywords: card.querySelector('.rule-exclude-keywords').value.split(/[,，]/).map(v => v.trim()).filter(Boolean),
-        match_type: card.querySelector('.rule-match-type').value,
-        pattern: card.querySelector('.rule-pattern').value.trim(),
-        reply: card.querySelector('.rule-reply').value.trim(),
-        ignore_case: card.querySelector('.rule-ignore-case').checked,
-        continue_after_reply: card.querySelector('.rule-continue').checked,
-        cooldown_seconds: Number(card.querySelector('.rule-cooldown').value || 0),
-        max_reply_count: Number(card.querySelector('.rule-max-reply-count').value || 0),
-        reply_count: Number(card.querySelector('.rule-reply-count').value || 0),
-        priority: Number(card.querySelector('.rule-priority').value || index + 1),
-      };
-    }
-
-    function createRuleCard(rule = {}, index = 0) {
-      const node = ruleTemplate.content.firstElementChild.cloneNode(true);
-      node.querySelector('.rule-title').textContent = rule.name || `规则 ${index + 1}`;
-      node.querySelector('.rule-name').value = rule.name || '';
-      node.querySelector('.rule-match-type').value = rule.match_type || 'keyword';
-      node.querySelector('.rule-pattern').value = rule.pattern || '';
-      node.querySelector('.rule-reply').value = rule.reply || '';
-      node.querySelector('.rule-groups').value = Array.isArray(rule.groups) ? rule.groups.join(',') : '';
-      node.querySelector('.rule-exclude-keywords').value = Array.isArray(rule.exclude_keywords) ? rule.exclude_keywords.join(',') : '';
-      node.querySelector('.rule-cooldown').value = rule.cooldown_seconds ?? 0;
-      node.querySelector('.rule-max-reply-count').value = rule.max_reply_count ?? 0;
-      node.querySelector('.rule-reply-count').value = rule.reply_count ?? 0;
-      node.querySelector('.rule-priority').value = rule.priority ?? (index + 1);
-      node.querySelector('.rule-enabled').checked = rule.enabled !== false;
-      node.querySelector('.rule-ignore-case').checked = rule.ignore_case !== false;
-      node.querySelector('.rule-continue').checked = !!rule.continue_after_reply;
-      node.querySelector('.delete-rule').addEventListener('click', () => node.remove());
-      node.querySelector('.rule-name').addEventListener('input', (event) => {
-        node.querySelector('.rule-title').textContent = event.target.value.trim() || `规则 ${index + 1}`;
-      });
-      return node;
-    }
-
-    async function loadState() {
-      hideNotice();
-      const response = await fetch('/api/state');
-      const data = await response.json();
-      currentUrl.textContent = data.webui_url || location.href;
-      enabledInput.checked = !!data.enabled;
-      ignoreSelfInput.checked = !!data.ignore_self_messages;
-      whitelistInput.value = Array.isArray(data.group_whitelist) ? data.group_whitelist.join(',') : '';
-      ruleList.innerHTML = '';
-      (data.rules || []).forEach((rule, index) => {
-        ruleList.appendChild(createRuleCard(rule, index));
-      });
-      if (!(data.rules || []).length) {
-        ruleList.appendChild(createRuleCard({}, 0));
-      }
-    }
-
-    async function saveAll() {
-      hideNotice();
-      const cards = [...ruleList.querySelectorAll('.rule-card')];
-      const payload = {
-        enabled: enabledInput.checked,
-        ignore_self_messages: ignoreSelfInput.checked,
-        group_whitelist: whitelistInput.value.split(/[,，]/).map(v => v.trim()).filter(Boolean),
-        rules: cards.map((card, index) => ruleCardToData(card, index)),
-      };
-      const response = await fetch('/api/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await response.json();
-      if (!response.ok || !data.ok) {
-        showNotice(data.message || '保存失败。', 'error');
-        return;
-      }
-      showNotice(data.message || '保存成功。', 'success');
-      await loadState();
-    }
-
-    document.getElementById('save-settings').addEventListener('click', saveAll);
-    document.getElementById('add-rule').addEventListener('click', () => {
-      const index = ruleList.querySelectorAll('.rule-card').length;
-      ruleList.appendChild(createRuleCard({}, index));
-    });
-
-    loadState().catch((error) => showNotice(`加载失败：${error}`, 'error'));
+    const $=s=>document.querySelector(s), list=$('#rule-list'), ruleTpl=$('#rule-template'), branchTpl=$('#branch-template');
+    const split=v=>Array.isArray(v)?v.map(x=>String(x).trim()).filter(Boolean):String(v||'').split(/[,，\n]+/).map(x=>x.trim()).filter(Boolean);
+    const notice=(msg,type='success')=>{const n=$('#notice');n.textContent=msg;n.className=`notice show ${type}`};
+    const clearNotice=()=>{$('#notice').className='notice';$('#notice').textContent=''};
+    const emptyRule=()=>({name:'',enabled:true,groups:[],exclude_keywords:[],match_type:'keyword',pattern:'',required_keywords:[],reply:'',branch_replies:[],ignore_case:true,continue_after_reply:false,cooldown_seconds:0,max_reply_count:0,reply_count:0,priority:1});
+    const demoRule=()=>({name:'售后咨询',enabled:true,groups:[],exclude_keywords:[],match_type:'keyword',pattern:'订单',required_keywords:['订单'],reply:'你是想查订单、催发货还是申请退款？',branch_replies:[{title:'发货问题',keywords:['发货','物流'],reply:'发货问题请把订单号发给我，我来帮你查。',match_policy:'any'},{title:'退款问题',keywords:['退款','退货'],reply:'退款问题请先提供订单号和退款原因。',match_policy:'any'}],ignore_case:true,continue_after_reply:false,cooldown_seconds:0,max_reply_count:0,reply_count:0,priority:1});
+    const normBranch=(b={},i=0)=>{const k=split(b.keywords);return{title:String(b.title||b.name||'').trim()||k[0]||`扩展回复 ${i+1}`,keywords:k,reply:String(b.reply||'').trim(),match_policy:b.match_policy==='all'?'all':'any'}};
+    const normRule=(r={},i=0)=>{const t=String(r.match_type||'keyword').trim()||'keyword',p=String(r.pattern||'').trim(),req=split(r.required_keywords);return{...emptyRule(),...r,name:String(r.name||'').trim(),groups:split(r.groups),exclude_keywords:split(r.exclude_keywords),match_type:t,pattern:p,required_keywords:t==='keyword'?(req.length?req:(p?[p]:[])):[],reply:String(r.reply||'').trim(),branch_replies:Array.isArray(r.branch_replies)?r.branch_replies.map(normBranch):[],ignore_case:r.ignore_case!==false,continue_after_reply:!!r.continue_after_reply,cooldown_seconds:Number(r.cooldown_seconds||0),max_reply_count:Number(r.max_reply_count||0),reply_count:Number(r.reply_count||0),priority:Number(r.priority||i+1)}};
+    function updateBranchTitles(box){[...box.querySelectorAll('.branch')].forEach((n,i)=>{const k=split(n.querySelector('.branch-keywords').value);n.querySelector('.branch-title').textContent=k[0]||`扩展回复 ${i+1}`})}
+    function makeBranch(b={},cb=()=>{}){const d=normBranch(b),n=branchTpl.content.firstElementChild.cloneNode(true);n.querySelector('.branch-keywords').value=d.keywords.join(', ');n.querySelector('.branch-policy').value=d.match_policy;n.querySelector('.branch-reply').value=d.reply;n.querySelector('.branch-title').textContent=d.title;['.branch-keywords','.branch-reply'].forEach(s=>n.querySelector(s).addEventListener('input',()=>{updateBranchTitles(n.parentElement);cb()}));n.querySelector('.branch-policy').addEventListener('change',cb);n.querySelector('.delete-branch').addEventListener('click',()=>{n.remove();cb()});return n}
+    function syncMode(card,type){const base=card.querySelector('.rule-base-reply'),direct=card.querySelector('.rule-direct-reply'),req=card.querySelector('.rule-required'),pattern=card.querySelector('.rule-pattern');if(type==='keyword'){if(!base.value.trim()&&direct.value.trim())base.value=direct.value.trim();if(!req.value.trim()&&pattern.value.trim())req.value=pattern.value.trim()}else{if(!direct.value.trim()&&base.value.trim())direct.value=base.value.trim();if(!pattern.value.trim()&&req.value.trim())pattern.value=req.value.trim()}}
+    function refreshCard(card){const type=card.querySelector('.rule-match-type').value,name=card.querySelector('.rule-name').value.trim(),req=split(card.querySelector('.rule-required').value),branchCount=card.querySelectorAll('.branch').length;card.querySelector('.keyword-mode').classList.toggle('hidden',type!=='keyword');card.querySelector('.advanced-mode').classList.toggle('hidden',type==='keyword');card.querySelector('.badge.mode').textContent=type==='keyword'?'关键词包含':type==='exact'?'整句完全一样':'正则表达式';card.querySelector('.badge.branch').textContent=`扩展回复 ${branchCount} 条`;card.querySelector('.rule-title').textContent=name||'新规则';card.querySelector('.summary').textContent=type==='keyword'?(req.length?`消息里先要出现：${req.join('、')}。然后再判断下面的扩展回复。`:'先命中必备关键词，再从上往下找第一条命中的扩展回复。'):type==='exact'?'只有消息和这里完全一样时才触发。':'高级方式：使用正则表达式匹配消息。';card.querySelector('.empty').style.display=branchCount?'none':'block';card.querySelector('.pattern-label').textContent=type==='regex'?'正则表达式':'完整句子';card.querySelector('.pattern-hint').textContent=type==='regex'?'这是高级方式，只在你已经熟悉正则表达式时再用。':'只有消息内容和这里完全一样时，才会触发。'}
+    function makeRule(rule={},index=0){const d=normRule(rule,index),n=ruleTpl.content.firstElementChild.cloneNode(true),branchBox=n.querySelector('.branch-list');n.querySelector('.rule-name').value=d.name;n.querySelector('.rule-enabled').checked=d.enabled!==false;n.querySelector('.rule-match-type').value=d.match_type;n.querySelector('.rule-required').value=d.required_keywords.join(', ');n.querySelector('.rule-pattern').value=d.pattern;n.querySelector('.rule-base-reply').value=d.reply;n.querySelector('.rule-direct-reply').value=d.reply;n.querySelector('.rule-groups').value=d.groups.join(', ');n.querySelector('.rule-excludes').value=d.exclude_keywords.join(', ');n.querySelector('.rule-cooldown').value=d.cooldown_seconds||0;n.querySelector('.rule-limit').value=d.max_reply_count||0;n.querySelector('.rule-count').value=d.reply_count||0;n.querySelector('.rule-priority').value=d.priority||index+1;n.querySelector('.rule-ignore-case').checked=d.ignore_case!==false;n.querySelector('.rule-continue').checked=!!d.continue_after_reply;(d.branch_replies||[]).forEach(b=>branchBox.appendChild(makeBranch(b,()=>refreshCard(n))));n.querySelector('.add-branch').addEventListener('click',()=>{branchBox.appendChild(makeBranch({},()=>refreshCard(n)));refreshCard(n)});n.querySelector('.delete-rule').addEventListener('click',()=>n.remove());n.querySelector('.rule-match-type').addEventListener('change',e=>{syncMode(n,e.target.value);refreshCard(n)});['.rule-name','.rule-required'].forEach(s=>n.querySelector(s).addEventListener('input',()=>refreshCard(n)));refreshCard(n);return n}
+    function branchData(n,i){const k=split(n.querySelector('.branch-keywords').value);return{title:k[0]||`扩展回复 ${i+1}`,keywords:k,reply:n.querySelector('.branch-reply').value.trim(),match_policy:n.querySelector('.branch-policy').value}}
+    function ruleData(card,i){const type=card.querySelector('.rule-match-type').value,req=split(card.querySelector('.rule-required').value);return{name:card.querySelector('.rule-name').value.trim(),enabled:card.querySelector('.rule-enabled').checked,groups:split(card.querySelector('.rule-groups').value),exclude_keywords:split(card.querySelector('.rule-excludes').value),match_type:type,pattern:type==='keyword'?req.join(','):card.querySelector('.rule-pattern').value.trim(),required_keywords:type==='keyword'?req:[],reply:type==='keyword'?card.querySelector('.rule-base-reply').value.trim():card.querySelector('.rule-direct-reply').value.trim(),branch_replies:type==='keyword'?[...card.querySelectorAll('.branch')].map((n,idx)=>branchData(n,idx)):[],ignore_case:card.querySelector('.rule-ignore-case').checked,continue_after_reply:card.querySelector('.rule-continue').checked,cooldown_seconds:Number(card.querySelector('.rule-cooldown').value||0),max_reply_count:Number(card.querySelector('.rule-limit').value||0),reply_count:Number(card.querySelector('.rule-count').value||0),priority:Number(card.querySelector('.rule-priority').value||i+1)}}
+    async function load(){clearNotice();const res=await fetch('/api/state');const data=await res.json();$('#current-url').textContent=data.webui_url||location.href;$('#enabled').checked=!!data.enabled;$('#ignore-self').checked=!!data.ignore_self_messages;$('#group-whitelist').value=Array.isArray(data.group_whitelist)?data.group_whitelist.join(', '):'';list.innerHTML='';const rules=Array.isArray(data.rules)?data.rules:[];(rules.length?rules:[emptyRule()]).forEach((r,i)=>list.appendChild(makeRule(r,i)))}
+    async function save(){clearNotice();const payload={enabled:$('#enabled').checked,ignore_self_messages:$('#ignore-self').checked,group_whitelist:split($('#group-whitelist').value),rules:[...list.querySelectorAll('.rule')].map((n,i)=>ruleData(n,i))};const res=await fetch('/api/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const data=await res.json();if(!res.ok||!data.ok){notice(data.message||'保存失败。','error');return}notice(data.message||'保存成功。','success');await load()}
+    $('#save-all').addEventListener('click',save);$('#add-rule').addEventListener('click',()=>list.appendChild(makeRule({},list.querySelectorAll('.rule').length)));$('#insert-example').addEventListener('click',()=>{list.appendChild(makeRule(demoRule(),list.querySelectorAll('.rule').length));notice('示例规则已插入，你可以直接改成自己的内容。')});load().catch(err=>notice(`加载失败：${err}`,'error'));
   </script>
 </body>
 </html>

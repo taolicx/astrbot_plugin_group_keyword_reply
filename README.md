@@ -16,6 +16,8 @@
 
 - 只处理群消息
 - 支持关键词匹配、完全匹配、正则匹配
+- 支持“必备关键词”先命中，再继续判断“扩展回复”
+- 支持根据不同扩展关键词返回不同回复
 - 支持插件级群白名单
 - 支持规则级群范围
 - 支持回复模板变量
@@ -80,14 +82,23 @@ http://127.0.0.1:18082
 - `groups`：规则级群范围，留空表示全部群
 - `exclude_keywords`：排除关键词列表；如果同一条消息同时包含触发关键词和这些排除词，就不回复
 - `match_type`：`keyword`、`exact`、`regex`
-- `pattern`：匹配内容
-- `reply`：回复内容
+- `pattern`：兼容旧版的匹配内容；关键词模式下会自动同步为必备关键词文本
+- `required_keywords`：必备关键词列表；关键词模式下这些词都出现才算命中
+- `reply`：基础回复；命中必备关键词但没命中扩展回复时使用
+- `branch_replies`：扩展回复列表；会按顺序判断，命中第一条就回复它
 - `ignore_case`：是否忽略大小写
 - `continue_after_reply`：回复后是否继续让其他插件或 LLM 处理
 - `cooldown_seconds`：冷却秒数
 - `priority`：优先级，数字越小越先匹配
 - `max_reply_count`：最大回复次数，`0` 表示不限
 - `reply_count`：当前已回复次数
+
+`branch_replies` 里的每一项支持：
+
+- `title`：这条扩展回复的名称
+- `keywords`：这条扩展回复自己的关键词
+- `reply`：命中这条扩展回复后的回复内容
+- `match_policy`：`any` 或 `all`；分别表示“命中任意一个词”或“这些词都要出现”
 
 ## 最大回复次数
 
@@ -173,7 +184,7 @@ http://127.0.0.1:18082
 
 - `/关键词回复 状态`
 - `/关键词回复 列表`
-- `/关键词回复 添加 名称 | keyword/exact/regex | 匹配内容 | 回复内容 | 群号1,群号2 | 开 | 次数上限`
+- `/关键词回复 添加 名称 | 包含/整句/正则 | 触发内容 | 回复内容 | 群号1,群号2 | 开/关 | 次数上限 | 排除词1,排除词2`
 - `/关键词回复 删除 规则名`
 - `/关键词回复 开关 规则名 开|关`
 - `/关键词回复 回复 规则名 新回复内容`
@@ -187,6 +198,43 @@ http://127.0.0.1:18082
 - `/关键词回复 帮助`
 
 ## 示例
+
+### 必备关键词 + 扩展回复
+
+```json
+[
+  {
+    "name": "售后咨询",
+    "enabled": true,
+    "groups": [],
+    "exclude_keywords": [],
+    "match_type": "keyword",
+    "pattern": "订单",
+    "required_keywords": ["订单"],
+    "reply": "你是想查订单、催发货还是申请退款？",
+    "branch_replies": [
+      {
+        "title": "发货问题",
+        "keywords": ["发货", "物流"],
+        "reply": "发货问题请把订单号发给我，我来帮你查。",
+        "match_policy": "any"
+      },
+      {
+        "title": "退款问题",
+        "keywords": ["退款", "退货"],
+        "reply": "退款问题请先提供订单号和退款原因。",
+        "match_policy": "any"
+      }
+    ],
+    "ignore_case": true,
+    "continue_after_reply": false,
+    "cooldown_seconds": 0,
+    "priority": 1,
+    "max_reply_count": 0,
+    "reply_count": 0
+  }
+]
+```
 
 ### 关键词包含匹配
 
