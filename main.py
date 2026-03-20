@@ -51,7 +51,7 @@ class SafeFormatDict(dict[str, str]):
     "GroupKeywordReply",
     "Codex",
     "按规则匹配群消息并自动发送预设回复",
-    "1.4.2",
+    "1.4.3",
     "https://github.com/taolicx/astrbot_plugin_group_keyword_reply",
 )
 class GroupKeywordReplyPlugin(Star):
@@ -270,6 +270,33 @@ class GroupKeywordReplyPlugin(Star):
             "priority": self._coerce_int(item.get("priority", index + 1), index + 1, 1),
             "max_reply_count": self._coerce_int(item.get("max_reply_count", 0)),
             "reply_count": self._coerce_int(item.get("reply_count", 0)),
+        }
+
+    def _build_editor_state(
+        self,
+        rules: list[dict[str, Any]] | None = None,
+        enabled: bool | None = None,
+        ignore_self_messages: bool | None = None,
+        group_whitelist: list[str] | None = None,
+    ) -> dict[str, Any]:
+        rule_items = rules if rules is not None else self._raw_rule_items()
+        return {
+            "enabled": self._plugin_enabled() if enabled is None else enabled,
+            "ignore_self_messages": (
+                self._ignore_self_messages()
+                if ignore_self_messages is None
+                else ignore_self_messages
+            ),
+            "group_whitelist": (
+                self._group_whitelist()
+                if group_whitelist is None
+                else group_whitelist
+            ),
+            "rules": [
+                self._prepare_rule_for_editor(item, index)
+                for index, item in enumerate(rule_items)
+            ],
+            "webui_url": self._webui_url(),
         }
 
     def _sanitize_branch_item(
@@ -647,16 +674,7 @@ class GroupKeywordReplyPlugin(Star):
         return app
 
     async def _handle_state(self, request: web.Request) -> web.Response:
-        payload = {
-            "enabled": self._plugin_enabled(),
-            "ignore_self_messages": self._ignore_self_messages(),
-            "group_whitelist": self._group_whitelist(),
-            "rules": [
-                self._prepare_rule_for_editor(item, index)
-                for index, item in enumerate(self._raw_rule_items())
-            ],
-            "webui_url": self._webui_url(),
-        }
+        payload = self._build_editor_state()
         return web.json_response(payload, headers=self._no_store_headers())
 
     async def _handle_save(self, request: web.Request) -> web.Response:
@@ -696,8 +714,19 @@ class GroupKeywordReplyPlugin(Star):
             }
         )
         self._clear_rules_cache()
+        branch_count = sum(len(item.get("branch_replies", [])) for item in normalized_rules)
+        state = self._build_editor_state(
+            rules=normalized_rules,
+            enabled=enabled,
+            ignore_self_messages=ignore_self,
+            group_whitelist=whitelist,
+        )
         return web.json_response(
-            {"ok": True, "message": "保存成功。"},
+            {
+                "ok": True,
+                "message": f"保存成功，已保存 {len(normalized_rules)} 条规则、{branch_count} 条扩展回复。",
+                "state": state,
+            },
             headers=self._no_store_headers(),
         )
 
