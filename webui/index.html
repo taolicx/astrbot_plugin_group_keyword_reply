@@ -170,6 +170,12 @@
       node.className = `notice show ${type}`;
     };
 
+    const showNotice = (message, type = 'success') => {
+      notice(message, type);
+      const node = $('#notice');
+      node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    };
+
     const clearNotice = () => {
       const node = $('#notice');
       node.className = 'notice';
@@ -207,7 +213,7 @@
         return;
       }
       removeSessionValue(NOTICE_KEY);
-      notice(item.message, item.type || 'success');
+      showNotice(item.message, item.type || 'success');
     };
 
     const emptyRule = () => ({
@@ -527,6 +533,39 @@
       };
     }
 
+    function validateBeforeSave(cards) {
+      for (const [ruleIndex, card] of cards.entries()) {
+        const ruleName = card.querySelector('.rule-name').value.trim() || `规则 ${ruleIndex + 1}`;
+        const type = card.querySelector('.rule-match-type').value;
+
+        if (type !== 'keyword') {
+          continue;
+        }
+
+        const branches = [...card.querySelectorAll('.branch')];
+        for (const [branchIndex, branch] of branches.entries()) {
+          const keywordsField = branch.querySelector('.branch-keywords');
+          const replyField = branch.querySelector('.branch-reply');
+          const keywords = split(keywordsField.value);
+          const reply = replyField.value.trim();
+
+          if (!keywords.length) {
+            keywordsField.focus();
+            keywordsField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return `规则「${ruleName}」的第 ${branchIndex + 1} 条扩展回复还没填关键词。`;
+          }
+
+          if (!reply) {
+            replyField.focus();
+            replyField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return `规则「${ruleName}」的第 ${branchIndex + 1} 条扩展回复还没填回复内容。`;
+          }
+        }
+      }
+
+      return '';
+    }
+
     function renderState(data, { keepNotice = false } = {}) {
       if (!keepNotice) {
         clearNotice();
@@ -562,7 +601,7 @@
       restoreNotice();
 
       if (resolved.restored) {
-        notice(
+        showNotice(
           '检测到服务端回读的内容和刚保存的不一致，已暂时保留本地最新内容。请再点一次保存。',
           'error'
         );
@@ -571,11 +610,18 @@
 
     async function save() {
       clearNotice();
+      const cards = [...list.querySelectorAll('.rule')];
+      const validationMessage = validateBeforeSave(cards);
+      if (validationMessage) {
+        showNotice(validationMessage, 'error');
+        return;
+      }
+
       const payload = {
         enabled: $('#enabled').checked,
         ignore_self_messages: $('#ignore-self').checked,
         group_whitelist: split($('#group-whitelist').value),
-        rules: [...list.querySelectorAll('.rule')].map((node, index) => ruleData(node, index)),
+        rules: cards.map((node, index) => ruleData(node, index)),
       };
 
       const response = await fetch('/api/save', {
@@ -586,7 +632,7 @@
       });
       const data = await response.json();
       if (!response.ok || !data.ok) {
-        notice(data.message || '保存失败。', 'error');
+        showNotice(data.message || '保存失败。', 'error');
         return;
       }
 
@@ -599,7 +645,7 @@
 
       setTimeout(() => {
         load({ keepNotice: true }).catch((error) => {
-          notice(`保存后校验失败：${error}`, 'error');
+          showNotice(`保存后校验失败：${error}`, 'error');
         });
       }, 250);
     }
@@ -618,11 +664,11 @@
       });
       const data = await response.json();
       if (!response.ok || !data.ok) {
-        notice(data.message || '清零失败。', 'error');
+        showNotice(data.message || '清零失败。', 'error');
         return;
       }
 
-      notice(data.message || '已清零。', 'success');
+      showNotice(data.message || '已清零。', 'success');
       await load();
     }
 
@@ -633,10 +679,10 @@
     });
     $('#insert-example').addEventListener('click', () => {
       list.appendChild(makeRule(demoRule(), list.querySelectorAll('.rule').length));
-      notice('示例规则已插入，你可以直接改成自己的内容。');
+      showNotice('示例规则已插入，你可以直接改成自己的内容。');
     });
 
-    load().catch((error) => notice(`加载失败：${error}`, 'error'));
+    load().catch((error) => showNotice(`加载失败：${error}`, 'error'));
   </script>
 </body>
 </html>
