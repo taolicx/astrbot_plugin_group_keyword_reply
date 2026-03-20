@@ -151,8 +151,6 @@
     const ruleTpl = $('#rule-template');
     const branchTpl = $('#branch-template');
     const NOTICE_KEY = 'keyword-reply-notice';
-    const STATE_KEY = 'keyword-reply-last-state';
-    const STATE_TTL = 5 * 60 * 1000;
 
     const split = (value) => {
       if (Array.isArray(value)) {
@@ -319,51 +317,6 @@
       webui_url: data.webui_url || location.href,
     });
 
-    const stateSignature = (data = {}) => JSON.stringify(buildState(data).rules);
-
-    const rememberState = (data = {}) => {
-      const state = buildState(data);
-      writeSessionJson(STATE_KEY, {
-        savedAt: Date.now(),
-        signature: stateSignature(state),
-        state,
-      });
-    };
-
-    const readRememberedState = () => {
-      const item = readSessionJson(STATE_KEY);
-      if (!item || !item.state) {
-        return null;
-      }
-      if (Date.now() - Number(item.savedAt || 0) > STATE_TTL) {
-        removeSessionValue(STATE_KEY);
-        return null;
-      }
-      return item;
-    };
-
-    const resolveLoadedState = (serverState) => {
-      const currentState = buildState(serverState);
-      const remembered = readRememberedState();
-      if (!remembered) {
-        return { state: currentState, restored: false };
-      }
-
-      if (remembered.signature === stateSignature(currentState)) {
-        removeSessionValue(STATE_KEY);
-        return { state: currentState, restored: false };
-      }
-
-      return {
-        state: {
-          ...currentState,
-          ...buildState(remembered.state),
-          webui_url: currentState.webui_url || remembered.state.webui_url,
-        },
-        restored: true,
-      };
-    };
-
     function updateBranchTitles(box) {
       [...box.querySelectorAll('.branch')].forEach((node, index) => {
         const keywords = split(node.querySelector('.branch-keywords').value);
@@ -423,7 +376,7 @@
       const type = card.querySelector('.rule-match-type').value;
       const name = card.querySelector('.rule-name').value.trim();
       const required = split(card.querySelector('.rule-required').value);
-      const branchCount = card.querySelectorAll('.branch').length;
+      const branchCount = card.querySelectorAll('.branch-list > .branch').length;
 
       card.querySelector('.keyword-mode').classList.toggle('hidden', type !== 'keyword');
       card.querySelector('.advanced-mode').classList.toggle('hidden', type === 'keyword');
@@ -520,7 +473,7 @@
             : card.querySelector('.rule-direct-reply').value.trim(),
         branch_replies:
           type === 'keyword'
-            ? [...card.querySelectorAll('.branch')].map((node, branchIndex) =>
+            ? [...card.querySelectorAll('.branch-list > .branch')].map((node, branchIndex) =>
                 branchData(node, branchIndex)
               )
             : [],
@@ -542,7 +495,7 @@
           continue;
         }
 
-        const branches = [...card.querySelectorAll('.branch')];
+        const branches = [...card.querySelectorAll('.branch-list > .branch')];
         for (const [branchIndex, branch] of branches.entries()) {
           const keywordsField = branch.querySelector('.branch-keywords');
           const replyField = branch.querySelector('.branch-reply');
@@ -596,58 +549,70 @@
     async function load({ keepNotice = false } = {}) {
       const response = await fetch(`/api/state?_=${Date.now()}`, { cache: 'no-store' });
       const data = await response.json();
-      const resolved = resolveLoadedState(data);
-      renderState(resolved.state, { keepNotice });
+      renderState(buildState(data), { keepNotice });
       restoreNotice();
-
-      if (resolved.restored) {
-        showNotice(
-          '检测到服务端回读的内容和刚保存的不一致，已暂时保留本地最新内容。请再点一次保存。',
-          'error'
-        );
-      }
     }
 
     async function save() {
-      clearNotice();
-      const cards = [...list.querySelectorAll('.rule')];
-      const validationMessage = validateBeforeSave(cards);
-      if (validationMessage) {
-        showNotice(validationMessage, 'error');
-        return;
-      }
+      try {
+        clearNotice();
+        const cards = [...list.querySelectorAll('.rule')];
+        const validationMessage = validateBeforeSave(cards);
+        if (validationMessage) {
+          showNotice(validationMessage, 'error');
+          return;
+        }
 
-      const payload = {
-        enabled: $('#enabled').checked,
-        ignore_self_messages: $('#ignore-self').checked,
-        group_whitelist: split($('#group-whitelist').value),
-        rules: cards.map((node, index) => ruleData(node, index)),
-      };
+        const payload = {
+          enabled: $('#enabled').checked,
+          ignore_self_messages: $('#ignore-self').checked,
+          group_whitelist: split($('#group-whitelist').value),
+          rules: cards.map((node, index) => ruleData(node, index)),
+        };
 
-      const response = await fetch('/api/save', {
-        method: 'POST',
-        cache: 'no-store',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await response.json();
-      if (!response.ok || !data.ok) {
-        showNotice(data.message || '保存失败。', 'error');
-        return;
-      }
-
-      const savedState = buildState(data.state || payload);
-      const message = data.message || '保存成功。';
-      rememberState(savedState);
-      renderState(savedState, { keepNotice: true });
-      storeNotice(message, 'success');
-      restoreNotice();
-
-      setTimeout(() => {
-        load({ keepNotice: true }).catch((error) => {
-          showNotice(`保存后校验失败：${error}`, 'error');
+        const response = await fetch('/api/save', {
+          method: 'POST',
+          cache: 'no-store',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
         });
-      }, 250);
+        const data = await response.json();
+        if (!response.ok || !data.ok) {
+          showNotice(data.message || '保存失败。', 'error');
+          return;
+        }
+
+        const savedState = buildState(data.state || payload);
+        const message = data.message || '保存成功。';
+        renderState(savedState, { keepNotice: true });
+        storeNotice(message, 'success');
+        restoreNotice();
+
+        setTimeout(() => {
+          load({ keepNotice: true }).catch((error) => {
+            showNotice(`保存后校验失败：${error}`, 'error');
+          });
+        }, 250);
+      } catch (error) {
+        sendDebugEvent('save_exception', {
+          message:
+            typeof error === 'object' && error !== null
+              ? String(error.message || error)
+              : String(error),
+          stack:
+            typeof error === 'object' && error !== null && error.stack
+              ? String(error.stack)
+              : '',
+        });
+        showNotice(
+          `保存时前端报错：${
+            typeof error === 'object' && error !== null
+              ? String(error.message || error)
+              : String(error)
+          }`,
+          'error'
+        );
+      }
     }
 
     async function resetCounts() {
