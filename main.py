@@ -51,7 +51,7 @@ class SafeFormatDict(dict[str, str]):
     "GroupKeywordReply",
     "Codex",
     "按规则匹配群消息并自动发送预设回复",
-    "1.4.3",
+    "1.4.4",
     "https://github.com/taolicx/astrbot_plugin_group_keyword_reply",
 )
 class GroupKeywordReplyPlugin(Star):
@@ -714,17 +714,43 @@ class GroupKeywordReplyPlugin(Star):
             }
         )
         self._clear_rules_cache()
-        branch_count = sum(len(item.get("branch_replies", [])) for item in normalized_rules)
-        state = self._build_editor_state(
-            rules=normalized_rules,
-            enabled=enabled,
-            ignore_self_messages=ignore_self,
-            group_whitelist=whitelist,
+
+        expected_rule_count = len(normalized_rules)
+        expected_branch_count = sum(
+            len(item.get("branch_replies", [])) for item in normalized_rules
         )
+        state = self._build_editor_state()
+        saved_rules = state.get("rules", [])
+        saved_rule_count = len(saved_rules)
+        saved_branch_count = sum(
+            len(item.get("branch_replies", []))
+            for item in saved_rules
+            if isinstance(item, dict)
+        )
+
+        if (
+            saved_rule_count != expected_rule_count
+            or saved_branch_count != expected_branch_count
+        ):
+            logger.warning(
+                "关键词回复保存后校验不一致："
+                f"规则 {saved_rule_count}/{expected_rule_count}，"
+                f"扩展回复 {saved_branch_count}/{expected_branch_count}"
+            )
+            return web.json_response(
+                {
+                    "ok": False,
+                    "message": "保存后校验未通过，扩展回复可能没有完整写入，请重试一次。",
+                    "state": state,
+                },
+                status=409,
+                headers=self._no_store_headers(),
+            )
+
         return web.json_response(
             {
                 "ok": True,
-                "message": f"保存成功，已保存 {len(normalized_rules)} 条规则、{branch_count} 条扩展回复。",
+                "message": f"保存成功，已保存 {saved_rule_count} 条规则、{saved_branch_count} 条扩展回复。",
                 "state": state,
             },
             headers=self._no_store_headers(),

@@ -146,29 +146,489 @@
   </template>
 
   <script>
-    const $=s=>document.querySelector(s), list=$('#rule-list'), ruleTpl=$('#rule-template'), branchTpl=$('#branch-template');
-    const NOTICE_KEY='keyword-reply-notice';
-    const split=v=>Array.isArray(v)?v.map(x=>String(x).trim()).filter(Boolean):String(v||'').split(/[,，\n]+/).map(x=>x.trim()).filter(Boolean);
-    const notice=(msg,type='success')=>{const n=$('#notice');n.textContent=msg;n.className=`notice show ${type}`};
-    const clearNotice=()=>{$('#notice').className='notice';$('#notice').textContent=''};
-    const storeNotice=(msg,type='success')=>{try{sessionStorage.setItem(NOTICE_KEY,JSON.stringify({msg,type}))}catch{}};
-    const restoreNotice=()=>{try{const raw=sessionStorage.getItem(NOTICE_KEY);if(!raw)return;sessionStorage.removeItem(NOTICE_KEY);const item=JSON.parse(raw);if(item&&item.msg)notice(item.msg,item.type||'success')}catch{}};
-    const emptyRule=()=>({name:'',enabled:true,groups:[],exclude_keywords:[],match_type:'keyword',pattern:'',required_keywords:[],reply:'',branch_replies:[],ignore_case:true,continue_after_reply:false,cooldown_seconds:0,max_reply_count:0,reply_count:0,priority:1});
-    const demoRule=()=>({name:'售后咨询',enabled:true,groups:[],exclude_keywords:[],match_type:'keyword',pattern:'订单',required_keywords:['订单'],reply:'你是想查订单、催发货还是申请退款？',branch_replies:[{title:'发货问题',keywords:['发货','物流'],reply:'发货问题请把订单号发给我，我来帮你查。',match_policy:'any'},{title:'退款问题',keywords:['退款','退货'],reply:'退款问题请先提供订单号和退款原因。',match_policy:'any'}],ignore_case:true,continue_after_reply:false,cooldown_seconds:0,max_reply_count:0,reply_count:0,priority:1});
-    const normBranch=(b={},i=0)=>{const k=split(b.keywords);return{title:String(b.title||b.name||'').trim()||k[0]||`扩展回复 ${i+1}`,keywords:k,reply:String(b.reply||'').trim(),match_policy:b.match_policy==='all'?'all':'any'}};
-    const normRule=(r={},i=0)=>{const t=String(r.match_type||'keyword').trim()||'keyword',p=String(r.pattern||'').trim(),req=split(r.required_keywords);return{...emptyRule(),...r,name:String(r.name||'').trim(),groups:split(r.groups),exclude_keywords:split(r.exclude_keywords),match_type:t,pattern:p,required_keywords:t==='keyword'?(req.length?req:(p?[p]:[])):[],reply:String(r.reply||'').trim(),branch_replies:Array.isArray(r.branch_replies)?r.branch_replies.map(normBranch):[],ignore_case:r.ignore_case!==false,continue_after_reply:!!r.continue_after_reply,cooldown_seconds:Number(r.cooldown_seconds||0),max_reply_count:Number(r.max_reply_count||0),reply_count:Number(r.reply_count||0),priority:Number(r.priority||i+1)}};
-    function updateBranchTitles(box){[...box.querySelectorAll('.branch')].forEach((n,i)=>{const k=split(n.querySelector('.branch-keywords').value);n.querySelector('.branch-title').textContent=k[0]||`扩展回复 ${i+1}`})}
-    function makeBranch(b={},cb=()=>{}){const d=normBranch(b),n=branchTpl.content.firstElementChild.cloneNode(true);n.querySelector('.branch-keywords').value=d.keywords.join(', ');n.querySelector('.branch-policy').value=d.match_policy;n.querySelector('.branch-reply').value=d.reply;n.querySelector('.branch-title').textContent=d.title;['.branch-keywords','.branch-reply'].forEach(s=>n.querySelector(s).addEventListener('input',()=>{updateBranchTitles(n.parentElement);cb()}));n.querySelector('.branch-policy').addEventListener('change',cb);n.querySelector('.delete-branch').addEventListener('click',()=>{n.remove();cb()});return n}
-    function syncMode(card,type){const base=card.querySelector('.rule-base-reply'),direct=card.querySelector('.rule-direct-reply'),req=card.querySelector('.rule-required'),pattern=card.querySelector('.rule-pattern');if(type==='keyword'){if(!base.value.trim()&&direct.value.trim())base.value=direct.value.trim();if(!req.value.trim()&&pattern.value.trim())req.value=pattern.value.trim()}else{if(!direct.value.trim()&&base.value.trim())direct.value=base.value.trim();if(!pattern.value.trim()&&req.value.trim())pattern.value=req.value.trim()}}
-    function refreshCard(card){const type=card.querySelector('.rule-match-type').value,name=card.querySelector('.rule-name').value.trim(),req=split(card.querySelector('.rule-required').value),branchCount=card.querySelectorAll('.branch').length;card.querySelector('.keyword-mode').classList.toggle('hidden',type!=='keyword');card.querySelector('.advanced-mode').classList.toggle('hidden',type==='keyword');card.querySelector('.badge.mode').textContent=type==='keyword'?'关键词包含':type==='exact'?'整句完全一样':'正则表达式';card.querySelector('.badge.branch').textContent=`扩展回复 ${branchCount} 条`;card.querySelector('.rule-title').textContent=name||'新规则';card.querySelector('.summary').textContent=type==='keyword'?(req.length?`消息里先要出现：${req.join('、')}。然后再判断下面的扩展回复。`:'先命中必备关键词，再从上往下找第一条命中的扩展回复。'):type==='exact'?'只有消息和这里完全一样时才触发。':'高级方式：使用正则表达式匹配消息。';card.querySelector('.empty').style.display=branchCount?'none':'block';card.querySelector('.pattern-label').textContent=type==='regex'?'正则表达式':'完整句子';card.querySelector('.pattern-hint').textContent=type==='regex'?'这是高级方式，只在你已经熟悉正则表达式时再用。':'只有消息内容和这里完全一样时，才会触发。'}
-    function makeRule(rule={},index=0){const d=normRule(rule,index),n=ruleTpl.content.firstElementChild.cloneNode(true),branchBox=n.querySelector('.branch-list');n.querySelector('.rule-name').value=d.name;n.querySelector('.rule-enabled').checked=d.enabled!==false;n.querySelector('.rule-match-type').value=d.match_type;n.querySelector('.rule-required').value=d.required_keywords.join(', ');n.querySelector('.rule-pattern').value=d.pattern;n.querySelector('.rule-base-reply').value=d.reply;n.querySelector('.rule-direct-reply').value=d.reply;n.querySelector('.rule-groups').value=d.groups.join(', ');n.querySelector('.rule-excludes').value=d.exclude_keywords.join(', ');n.querySelector('.rule-cooldown').value=d.cooldown_seconds||0;n.querySelector('.rule-limit').value=d.max_reply_count||0;n.querySelector('.rule-count').value=d.reply_count||0;n.querySelector('.rule-priority').value=d.priority||index+1;n.querySelector('.rule-ignore-case').checked=d.ignore_case!==false;n.querySelector('.rule-continue').checked=!!d.continue_after_reply;(d.branch_replies||[]).forEach(b=>branchBox.appendChild(makeBranch(b,()=>refreshCard(n))));n.querySelector('.add-branch').addEventListener('click',()=>{branchBox.appendChild(makeBranch({},()=>refreshCard(n)));refreshCard(n)});n.querySelector('.delete-rule').addEventListener('click',()=>n.remove());n.querySelector('.rule-match-type').addEventListener('change',e=>{syncMode(n,e.target.value);refreshCard(n)});['.rule-name','.rule-required'].forEach(s=>n.querySelector(s).addEventListener('input',()=>refreshCard(n)));refreshCard(n);return n}
-    function branchData(n,i){const k=split(n.querySelector('.branch-keywords').value);return{title:k[0]||`扩展回复 ${i+1}`,keywords:k,reply:n.querySelector('.branch-reply').value.trim(),match_policy:n.querySelector('.branch-policy').value}}
-    function ruleData(card,i){const type=card.querySelector('.rule-match-type').value,req=split(card.querySelector('.rule-required').value);return{name:card.querySelector('.rule-name').value.trim(),enabled:card.querySelector('.rule-enabled').checked,groups:split(card.querySelector('.rule-groups').value),exclude_keywords:split(card.querySelector('.rule-excludes').value),match_type:type,pattern:type==='keyword'?req.join(','):card.querySelector('.rule-pattern').value.trim(),required_keywords:type==='keyword'?req:[],reply:type==='keyword'?card.querySelector('.rule-base-reply').value.trim():card.querySelector('.rule-direct-reply').value.trim(),branch_replies:type==='keyword'?[...card.querySelectorAll('.branch')].map((n,idx)=>branchData(n,idx)):[],ignore_case:card.querySelector('.rule-ignore-case').checked,continue_after_reply:card.querySelector('.rule-continue').checked,cooldown_seconds:Number(card.querySelector('.rule-cooldown').value||0),max_reply_count:Number(card.querySelector('.rule-limit').value||0),reply_count:Number(card.querySelector('.rule-count').value||0),priority:Number(card.querySelector('.rule-priority').value||i+1)}}
-    function renderState(data,{keepNotice=false}={}){if(!keepNotice)clearNotice();$('#current-url').textContent=data.webui_url||location.href;$('#enabled').checked=!!data.enabled;$('#ignore-self').checked=!!data.ignore_self_messages;$('#group-whitelist').value=Array.isArray(data.group_whitelist)?data.group_whitelist.join(', '):'';list.innerHTML='';const rules=Array.isArray(data.rules)?data.rules:[];(rules.length?rules:[emptyRule()]).forEach((r,i)=>list.appendChild(makeRule(r,i)))}
-    async function load({keepNotice=false}={}){const res=await fetch(`/api/state?_=${Date.now()}`,{cache:'no-store'});const data=await res.json();renderState(data,{keepNotice});restoreNotice()}
-    async function save(){clearNotice();const payload={enabled:$('#enabled').checked,ignore_self_messages:$('#ignore-self').checked,group_whitelist:split($('#group-whitelist').value),rules:[...list.querySelectorAll('.rule')].map((n,i)=>ruleData(n,i))};const res=await fetch('/api/save',{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const data=await res.json();if(!res.ok||!data.ok){notice(data.message||'保存失败。','error');return}const message=data.message||'保存成功。';if(data.state)renderState(data.state,{keepNotice:true});storeNotice(message,'success');restoreNotice()}
-    async function resetCounts(){clearNotice();if(!window.confirm('这会把所有规则的“已经回复几次”清零，是否继续？'))return;const res=await fetch('/api/reset-counts',{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json'},body:'{}'});const data=await res.json();if(!res.ok||!data.ok){notice(data.message||'清零失败。','error');return}notice(data.message||'已清零。','success');await load()}
-    $('#save-all').addEventListener('click',save);$('#reset-counts').addEventListener('click',resetCounts);$('#add-rule').addEventListener('click',()=>list.appendChild(makeRule({},list.querySelectorAll('.rule').length)));$('#insert-example').addEventListener('click',()=>{list.appendChild(makeRule(demoRule(),list.querySelectorAll('.rule').length));notice('示例规则已插入，你可以直接改成自己的内容。')});load().catch(err=>notice(`加载失败：${err}`,'error'));
+    const $ = (selector) => document.querySelector(selector);
+    const list = $('#rule-list');
+    const ruleTpl = $('#rule-template');
+    const branchTpl = $('#branch-template');
+    const NOTICE_KEY = 'keyword-reply-notice';
+    const STATE_KEY = 'keyword-reply-last-state';
+    const STATE_TTL = 5 * 60 * 1000;
+
+    const split = (value) => {
+      if (Array.isArray(value)) {
+        return value.map((item) => String(item).trim()).filter(Boolean);
+      }
+      return String(value || '')
+        .split(/[,，\n]+/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+    };
+
+    const notice = (message, type = 'success') => {
+      const node = $('#notice');
+      node.textContent = message;
+      node.className = `notice show ${type}`;
+    };
+
+    const clearNotice = () => {
+      const node = $('#notice');
+      node.className = 'notice';
+      node.textContent = '';
+    };
+
+    const readSessionJson = (key) => {
+      try {
+        const raw = sessionStorage.getItem(key);
+        return raw ? JSON.parse(raw) : null;
+      } catch {
+        return null;
+      }
+    };
+
+    const writeSessionJson = (key, value) => {
+      try {
+        sessionStorage.setItem(key, JSON.stringify(value));
+      } catch {}
+    };
+
+    const removeSessionValue = (key) => {
+      try {
+        sessionStorage.removeItem(key);
+      } catch {}
+    };
+
+    const storeNotice = (message, type = 'success') => {
+      writeSessionJson(NOTICE_KEY, { message, type });
+    };
+
+    const restoreNotice = () => {
+      const item = readSessionJson(NOTICE_KEY);
+      if (!item || !item.message) {
+        return;
+      }
+      removeSessionValue(NOTICE_KEY);
+      notice(item.message, item.type || 'success');
+    };
+
+    const emptyRule = () => ({
+      name: '',
+      enabled: true,
+      groups: [],
+      exclude_keywords: [],
+      match_type: 'keyword',
+      pattern: '',
+      required_keywords: [],
+      reply: '',
+      branch_replies: [],
+      ignore_case: true,
+      continue_after_reply: false,
+      cooldown_seconds: 0,
+      max_reply_count: 0,
+      reply_count: 0,
+      priority: 1,
+    });
+
+    const demoRule = () => ({
+      name: '售后咨询',
+      enabled: true,
+      groups: [],
+      exclude_keywords: [],
+      match_type: 'keyword',
+      pattern: '订单',
+      required_keywords: ['订单'],
+      reply: '你是想查订单、催发货还是申请退款？',
+      branch_replies: [
+        {
+          title: '发货问题',
+          keywords: ['发货', '物流'],
+          reply: '发货问题请把订单号发给我，我来帮你查。',
+          match_policy: 'any',
+        },
+        {
+          title: '退款问题',
+          keywords: ['退款', '退货'],
+          reply: '退款问题请先提供订单号和退款原因。',
+          match_policy: 'any',
+        },
+      ],
+      ignore_case: true,
+      continue_after_reply: false,
+      cooldown_seconds: 0,
+      max_reply_count: 0,
+      reply_count: 0,
+      priority: 1,
+    });
+
+    const normBranch = (branch = {}, index = 0) => {
+      const keywords = split(branch.keywords);
+      return {
+        title:
+          String(branch.title || branch.name || '').trim() ||
+          keywords[0] ||
+          `扩展回复 ${index + 1}`,
+        keywords,
+        reply: String(branch.reply || '').trim(),
+        match_policy: branch.match_policy === 'all' ? 'all' : 'any',
+      };
+    };
+
+    const normRule = (rule = {}, index = 0) => {
+      const matchType = String(rule.match_type || 'keyword').trim() || 'keyword';
+      const pattern = String(rule.pattern || '').trim();
+      const requiredKeywords = split(rule.required_keywords);
+      return {
+        ...emptyRule(),
+        ...rule,
+        name: String(rule.name || '').trim(),
+        groups: split(rule.groups),
+        exclude_keywords: split(rule.exclude_keywords),
+        match_type: matchType,
+        pattern,
+        required_keywords:
+          matchType === 'keyword'
+            ? requiredKeywords.length
+              ? requiredKeywords
+              : pattern
+                ? [pattern]
+                : []
+            : [],
+        reply: String(rule.reply || '').trim(),
+        branch_replies: Array.isArray(rule.branch_replies)
+          ? rule.branch_replies.map(normBranch)
+          : [],
+        ignore_case: rule.ignore_case !== false,
+        continue_after_reply: !!rule.continue_after_reply,
+        cooldown_seconds: Number(rule.cooldown_seconds || 0),
+        max_reply_count: Number(rule.max_reply_count || 0),
+        reply_count: Number(rule.reply_count || 0),
+        priority: Number(rule.priority || index + 1),
+      };
+    };
+
+    const buildState = (data = {}) => ({
+      enabled: !!data.enabled,
+      ignore_self_messages: !!data.ignore_self_messages,
+      group_whitelist: split(data.group_whitelist),
+      rules: (Array.isArray(data.rules) ? data.rules : []).map(normRule),
+      webui_url: data.webui_url || location.href,
+    });
+
+    const stateSignature = (data = {}) => JSON.stringify(buildState(data).rules);
+
+    const rememberState = (data = {}) => {
+      const state = buildState(data);
+      writeSessionJson(STATE_KEY, {
+        savedAt: Date.now(),
+        signature: stateSignature(state),
+        state,
+      });
+    };
+
+    const readRememberedState = () => {
+      const item = readSessionJson(STATE_KEY);
+      if (!item || !item.state) {
+        return null;
+      }
+      if (Date.now() - Number(item.savedAt || 0) > STATE_TTL) {
+        removeSessionValue(STATE_KEY);
+        return null;
+      }
+      return item;
+    };
+
+    const resolveLoadedState = (serverState) => {
+      const currentState = buildState(serverState);
+      const remembered = readRememberedState();
+      if (!remembered) {
+        return { state: currentState, restored: false };
+      }
+
+      if (remembered.signature === stateSignature(currentState)) {
+        removeSessionValue(STATE_KEY);
+        return { state: currentState, restored: false };
+      }
+
+      return {
+        state: {
+          ...currentState,
+          ...buildState(remembered.state),
+          webui_url: currentState.webui_url || remembered.state.webui_url,
+        },
+        restored: true,
+      };
+    };
+
+    function updateBranchTitles(box) {
+      [...box.querySelectorAll('.branch')].forEach((node, index) => {
+        const keywords = split(node.querySelector('.branch-keywords').value);
+        node.querySelector('.branch-title').textContent =
+          keywords[0] || `扩展回复 ${index + 1}`;
+      });
+    }
+
+    function makeBranch(branch = {}, onChange = () => {}) {
+      const data = normBranch(branch);
+      const node = branchTpl.content.firstElementChild.cloneNode(true);
+      node.querySelector('.branch-keywords').value = data.keywords.join(', ');
+      node.querySelector('.branch-policy').value = data.match_policy;
+      node.querySelector('.branch-reply').value = data.reply;
+      node.querySelector('.branch-title').textContent = data.title;
+
+      ['.branch-keywords', '.branch-reply'].forEach((selector) => {
+        node.querySelector(selector).addEventListener('input', () => {
+          updateBranchTitles(node.parentElement);
+          onChange();
+        });
+      });
+
+      node.querySelector('.branch-policy').addEventListener('change', onChange);
+      node.querySelector('.delete-branch').addEventListener('click', () => {
+        node.remove();
+        onChange();
+      });
+      return node;
+    }
+
+    function syncMode(card, type) {
+      const base = card.querySelector('.rule-base-reply');
+      const direct = card.querySelector('.rule-direct-reply');
+      const required = card.querySelector('.rule-required');
+      const pattern = card.querySelector('.rule-pattern');
+
+      if (type === 'keyword') {
+        if (!base.value.trim() && direct.value.trim()) {
+          base.value = direct.value.trim();
+        }
+        if (!required.value.trim() && pattern.value.trim()) {
+          required.value = pattern.value.trim();
+        }
+        return;
+      }
+
+      if (!direct.value.trim() && base.value.trim()) {
+        direct.value = base.value.trim();
+      }
+      if (!pattern.value.trim() && required.value.trim()) {
+        pattern.value = required.value.trim();
+      }
+    }
+
+    function refreshCard(card) {
+      const type = card.querySelector('.rule-match-type').value;
+      const name = card.querySelector('.rule-name').value.trim();
+      const required = split(card.querySelector('.rule-required').value);
+      const branchCount = card.querySelectorAll('.branch').length;
+
+      card.querySelector('.keyword-mode').classList.toggle('hidden', type !== 'keyword');
+      card.querySelector('.advanced-mode').classList.toggle('hidden', type === 'keyword');
+      card.querySelector('.badge.mode').textContent =
+        type === 'keyword' ? '关键词包含' : type === 'exact' ? '整句完全一样' : '正则表达式';
+      card.querySelector('.badge.branch').textContent = `扩展回复 ${branchCount} 条`;
+      card.querySelector('.rule-title').textContent = name || '新规则';
+      card.querySelector('.summary').textContent =
+        type === 'keyword'
+          ? required.length
+            ? `消息里先要出现：${required.join('、')}。然后再判断下面的扩展回复。`
+            : '先命中必备关键词，再从上往下找第一条命中的扩展回复。'
+          : type === 'exact'
+            ? '只有消息和这里完全一样时才触发。'
+            : '高级方式：使用正则表达式匹配消息。';
+      card.querySelector('.empty').style.display = branchCount ? 'none' : 'block';
+      card.querySelector('.pattern-label').textContent =
+        type === 'regex' ? '正则表达式' : '完整句子';
+      card.querySelector('.pattern-hint').textContent =
+        type === 'regex'
+          ? '这是高级方式，只在你已经熟悉正则表达式时再用。'
+          : '只有消息内容和这里完全一样时，才会触发。';
+    }
+
+    function makeRule(rule = {}, index = 0) {
+      const data = normRule(rule, index);
+      const node = ruleTpl.content.firstElementChild.cloneNode(true);
+      const branchBox = node.querySelector('.branch-list');
+
+      node.querySelector('.rule-name').value = data.name;
+      node.querySelector('.rule-enabled').checked = data.enabled !== false;
+      node.querySelector('.rule-match-type').value = data.match_type;
+      node.querySelector('.rule-required').value = data.required_keywords.join(', ');
+      node.querySelector('.rule-pattern').value = data.pattern;
+      node.querySelector('.rule-base-reply').value = data.reply;
+      node.querySelector('.rule-direct-reply').value = data.reply;
+      node.querySelector('.rule-groups').value = data.groups.join(', ');
+      node.querySelector('.rule-excludes').value = data.exclude_keywords.join(', ');
+      node.querySelector('.rule-cooldown').value = data.cooldown_seconds || 0;
+      node.querySelector('.rule-limit').value = data.max_reply_count || 0;
+      node.querySelector('.rule-count').value = data.reply_count || 0;
+      node.querySelector('.rule-priority').value = data.priority || index + 1;
+      node.querySelector('.rule-ignore-case').checked = data.ignore_case !== false;
+      node.querySelector('.rule-continue').checked = !!data.continue_after_reply;
+
+      (data.branch_replies || []).forEach((branch) => {
+        branchBox.appendChild(makeBranch(branch, () => refreshCard(node)));
+      });
+
+      node.querySelector('.add-branch').addEventListener('click', () => {
+        branchBox.appendChild(makeBranch({}, () => refreshCard(node)));
+        refreshCard(node);
+      });
+      node.querySelector('.delete-rule').addEventListener('click', () => node.remove());
+      node.querySelector('.rule-match-type').addEventListener('change', (event) => {
+        syncMode(node, event.target.value);
+        refreshCard(node);
+      });
+      ['.rule-name', '.rule-required'].forEach((selector) => {
+        node.querySelector(selector).addEventListener('input', () => refreshCard(node));
+      });
+
+      refreshCard(node);
+      return node;
+    }
+
+    function branchData(node, index) {
+      const keywords = split(node.querySelector('.branch-keywords').value);
+      return {
+        title: keywords[0] || `扩展回复 ${index + 1}`,
+        keywords,
+        reply: node.querySelector('.branch-reply').value.trim(),
+        match_policy: node.querySelector('.branch-policy').value,
+      };
+    }
+
+    function ruleData(card, index) {
+      const type = card.querySelector('.rule-match-type').value;
+      const required = split(card.querySelector('.rule-required').value);
+      return {
+        name: card.querySelector('.rule-name').value.trim(),
+        enabled: card.querySelector('.rule-enabled').checked,
+        groups: split(card.querySelector('.rule-groups').value),
+        exclude_keywords: split(card.querySelector('.rule-excludes').value),
+        match_type: type,
+        pattern:
+          type === 'keyword'
+            ? required.join(',')
+            : card.querySelector('.rule-pattern').value.trim(),
+        required_keywords: type === 'keyword' ? required : [],
+        reply:
+          type === 'keyword'
+            ? card.querySelector('.rule-base-reply').value.trim()
+            : card.querySelector('.rule-direct-reply').value.trim(),
+        branch_replies:
+          type === 'keyword'
+            ? [...card.querySelectorAll('.branch')].map((node, branchIndex) =>
+                branchData(node, branchIndex)
+              )
+            : [],
+        ignore_case: card.querySelector('.rule-ignore-case').checked,
+        continue_after_reply: card.querySelector('.rule-continue').checked,
+        cooldown_seconds: Number(card.querySelector('.rule-cooldown').value || 0),
+        max_reply_count: Number(card.querySelector('.rule-limit').value || 0),
+        reply_count: Number(card.querySelector('.rule-count').value || 0),
+        priority: Number(card.querySelector('.rule-priority').value || index + 1),
+      };
+    }
+
+    function renderState(data, { keepNotice = false } = {}) {
+      if (!keepNotice) {
+        clearNotice();
+      }
+
+      $('#current-url').textContent = data.webui_url || location.href;
+      $('#enabled').checked = !!data.enabled;
+      $('#ignore-self').checked = !!data.ignore_self_messages;
+      $('#group-whitelist').value = Array.isArray(data.group_whitelist)
+        ? data.group_whitelist.join(', ')
+        : '';
+
+      list.innerHTML = '';
+      const rules = Array.isArray(data.rules) ? data.rules : [];
+      (rules.length ? rules : [emptyRule()]).forEach((rule, index) => {
+        list.appendChild(makeRule(rule, index));
+      });
+    }
+
+    async function load({ keepNotice = false } = {}) {
+      const response = await fetch(`/api/state?_=${Date.now()}`, { cache: 'no-store' });
+      const data = await response.json();
+      const resolved = resolveLoadedState(data);
+      renderState(resolved.state, { keepNotice });
+      restoreNotice();
+
+      if (resolved.restored) {
+        notice(
+          '检测到服务端回读的内容和刚保存的不一致，已暂时保留本地最新内容。请再点一次保存。',
+          'error'
+        );
+      }
+    }
+
+    async function save() {
+      clearNotice();
+      const payload = {
+        enabled: $('#enabled').checked,
+        ignore_self_messages: $('#ignore-self').checked,
+        group_whitelist: split($('#group-whitelist').value),
+        rules: [...list.querySelectorAll('.rule')].map((node, index) => ruleData(node, index)),
+      };
+
+      const response = await fetch('/api/save', {
+        method: 'POST',
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        notice(data.message || '保存失败。', 'error');
+        return;
+      }
+
+      const savedState = buildState(data.state || payload);
+      const message = data.message || '保存成功。';
+      rememberState(savedState);
+      renderState(savedState, { keepNotice: true });
+      storeNotice(message, 'success');
+      restoreNotice();
+
+      setTimeout(() => {
+        load({ keepNotice: true }).catch((error) => {
+          notice(`保存后校验失败：${error}`, 'error');
+        });
+      }, 250);
+    }
+
+    async function resetCounts() {
+      clearNotice();
+      if (!window.confirm('这会把所有规则的“已经回复几次”清零，是否继续？')) {
+        return;
+      }
+
+      const response = await fetch('/api/reset-counts', {
+        method: 'POST',
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        notice(data.message || '清零失败。', 'error');
+        return;
+      }
+
+      notice(data.message || '已清零。', 'success');
+      await load();
+    }
+
+    $('#save-all').addEventListener('click', save);
+    $('#reset-counts').addEventListener('click', resetCounts);
+    $('#add-rule').addEventListener('click', () => {
+      list.appendChild(makeRule({}, list.querySelectorAll('.rule').length));
+    });
+    $('#insert-example').addEventListener('click', () => {
+      list.appendChild(makeRule(demoRule(), list.querySelectorAll('.rule').length));
+      notice('示例规则已插入，你可以直接改成自己的内容。');
+    });
+
+    load().catch((error) => notice(`加载失败：${error}`, 'error'));
   </script>
 </body>
 </html>
