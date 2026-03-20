@@ -51,7 +51,7 @@ class SafeFormatDict(dict[str, str]):
     "GroupKeywordReply",
     "Codex",
     "按规则匹配群消息并自动发送预设回复",
-    "1.4.0",
+    "1.4.1",
     "https://github.com/taolicx/astrbot_plugin_group_keyword_reply",
 )
 class GroupKeywordReplyPlugin(Star):
@@ -421,6 +421,21 @@ class GroupKeywordReplyPlugin(Star):
         if changed:
             self._save_rule_items(items)
 
+    def _reset_rule_reply_counts(self, rule_name: str | None = None) -> int:
+        items = self._raw_rule_items()
+        reset_count = 0
+
+        for item in items:
+            name = str(item.get("name") or "").strip()
+            if rule_name is not None and name != rule_name:
+                continue
+            item["reply_count"] = 0
+            reset_count += 1
+
+        if reset_count > 0:
+            self._save_rule_items(items)
+        return reset_count
+
     def _is_reply_limit_reached(self, rule: ReplyRule) -> bool:
         return rule.max_reply_count > 0 and rule.reply_count >= rule.max_reply_count
 
@@ -618,6 +633,7 @@ class GroupKeywordReplyPlugin(Star):
                 web.get("/", self._handle_index),
                 web.get("/api/state", self._handle_state),
                 web.post("/api/save", self._handle_save),
+                web.post("/api/reset-counts", self._handle_reset_counts),
             ]
         )
         return app
@@ -673,6 +689,26 @@ class GroupKeywordReplyPlugin(Star):
         )
         self._clear_rules_cache()
         return web.json_response({"ok": True, "message": "保存成功。"})
+
+    async def _handle_reset_counts(self, request: web.Request) -> web.Response:
+        payload: dict[str, Any] = {}
+        if request.can_read_body:
+            try:
+                payload = await request.json()
+            except Exception:
+                payload = {}
+
+        name = str(payload.get("name") or "").strip()
+        reset_count = self._reset_rule_reply_counts(name or None)
+        if reset_count <= 0:
+            message = f"未找到规则：{name}" if name else "当前没有可重置的规则。"
+            return web.json_response({"ok": False, "message": message}, status=404)
+
+        if name:
+            message = f"规则 {name} 的已回复次数已清零。"
+        else:
+            message = f"已一键清零 {reset_count} 条规则的已回复次数。"
+        return web.json_response({"ok": True, "message": message})
 
     async def _start_webui_server(self) -> None:
         async with self._web_lock:
@@ -1012,22 +1048,36 @@ class GroupKeywordReplyPlugin(Star):
     ) -> AsyncGenerator[MessageEventResult, None]:
         name = str(name or "").strip()
         if not name:
-            yield event.plain_result("用法：/关键词回复 重置次数 规则名")
+            yield event.plain_result("用法：/关键词回复 重置次数 规则名\n或：/关键词回复 重置次数 全部")
             return
 
-        items = self._raw_rule_items()
-        changed = False
-        for item in items:
-            if str(item.get("name") or "").strip() == name:
-                item["reply_count"] = 0
-                changed = True
-                break
-        if not changed:
+        if name in {"全部", "all", "ALL"}:
+            reset_count = self._reset_rule_reply_counts()
+            if reset_count <= 0:
+                yield event.plain_result("当前没有可重置的规则。")
+                return
+            yield event.plain_result(
+                f"已一键清零 {reset_count} 条规则的已回复次数。"
+            )
+            return
+
+        reset_count = self._reset_rule_reply_counts(name)
+        if reset_count <= 0:
             yield event.plain_result(f"未找到规则：{name}")
             return
 
-        self._save_rule_items(items)
         yield event.plain_result(f"规则 {name} 的已回复次数已清零。")
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @keyword_reply.command("重置全部次数", alias={"一键重置次数", "清零全部次数"})
+    async def keyword_reply_reset_all_counts(
+        self, event: AstrMessageEvent
+    ) -> AsyncGenerator[MessageEventResult, None]:
+        reset_count = self._reset_rule_reply_counts()
+        if reset_count <= 0:
+            yield event.plain_result("当前没有可重置的规则。")
+            return
+        yield event.plain_result(f"已一键清零 {reset_count} 条规则的已回复次数。")
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @keyword_reply.command("群")
@@ -1109,13 +1159,16 @@ class GroupKeywordReplyPlugin(Star):
             "/关键词回复 排除 规则名 排除词1,排除词2\n"
             "/关键词回复 次数 规则名 次数上限\n"
             "/关键词回复 重置次数 规则名\n"
+            "/关键词回复 重置次数 全部\n"
+            "/关键词回复 重置全部次数\n"
             "/关键词回复 群 规则名 群号1,群号2\n"
             "/关键词回复 白名单 查看\n"
             "/关键词回复 白名单 添加 群号\n"
             "/关键词回复 白名单 删除 群号\n"
             "\n说明：\n"
             "1. “包含”会把你填的内容当作必备关键词。\n"
-            "2. 需要“必备关键词 + 不同扩展关键词回不同内容”时，请直接用面板。"
+            "2. 需要“必备关键词 + 不同扩展关键词回不同内容”时，请直接用面板。\n"
+            "3. 想把所有规则的已回复次数一起清零，可以用“重置次数 全部”或“重置全部次数”。"
         ).use_t2i(False)
 
     @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
