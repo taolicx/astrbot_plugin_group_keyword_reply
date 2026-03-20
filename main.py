@@ -82,6 +82,13 @@ class GroupKeywordReplyPlugin(Star):
         if callable(save_config):
             save_config()
 
+    def _no_store_headers(self) -> dict[str, str]:
+        return {
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        }
+
     def _clear_rules_cache(self) -> None:
         self._rules_cache_key = ""
         self._rules_cache = []
@@ -624,6 +631,7 @@ class GroupKeywordReplyPlugin(Star):
             text=index_path.read_text(encoding="utf-8"),
             content_type="text/html",
             charset="utf-8",
+            headers=self._no_store_headers(),
         )
 
     def _create_web_application(self) -> web.Application:
@@ -649,7 +657,7 @@ class GroupKeywordReplyPlugin(Star):
             ],
             "webui_url": self._webui_url(),
         }
-        return web.json_response(payload)
+        return web.json_response(payload, headers=self._no_store_headers())
 
     async def _handle_save(self, request: web.Request) -> web.Response:
         try:
@@ -688,7 +696,10 @@ class GroupKeywordReplyPlugin(Star):
             }
         )
         self._clear_rules_cache()
-        return web.json_response({"ok": True, "message": "保存成功。"})
+        return web.json_response(
+            {"ok": True, "message": "保存成功。"},
+            headers=self._no_store_headers(),
+        )
 
     async def _handle_reset_counts(self, request: web.Request) -> web.Response:
         payload: dict[str, Any] = {}
@@ -702,13 +713,20 @@ class GroupKeywordReplyPlugin(Star):
         reset_count = self._reset_rule_reply_counts(name or None)
         if reset_count <= 0:
             message = f"未找到规则：{name}" if name else "当前没有可重置的规则。"
-            return web.json_response({"ok": False, "message": message}, status=404)
+            return web.json_response(
+                {"ok": False, "message": message},
+                status=404,
+                headers=self._no_store_headers(),
+            )
 
         if name:
             message = f"规则 {name} 的已回复次数已清零。"
         else:
             message = f"已一键清零 {reset_count} 条规则的已回复次数。"
-        return web.json_response({"ok": True, "message": message})
+        return web.json_response(
+            {"ok": True, "message": message},
+            headers=self._no_store_headers(),
+        )
 
     async def _start_webui_server(self) -> None:
         async with self._web_lock:
