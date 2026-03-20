@@ -20,7 +20,7 @@
     .tip ul{margin:0;padding-left:18px;color:var(--muted);font-size:13px;line-height:1.8}
     .list{display:grid;gap:14px}.rule{padding:16px;border:1px solid var(--line);border-radius:22px;background:rgba(255,255,255,.82)}.badges{display:flex;gap:8px;flex-wrap:wrap}.badge{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;font-size:12px;font-weight:800}.badge.mode{background:#dff7f3;color:#0b6058}.badge.branch{background:#fff2df;color:#8a5a1c}
     .rule-title{display:block;margin:8px 0 4px;font-size:22px}.head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:14px}.section{margin-top:14px;padding-top:14px;border-top:1px solid rgba(231,215,196,.7)}.section h3{margin:0 0 10px;font-size:15px}
-    .panel-box{padding:13px;border:1px solid #dcc7ab;border-radius:18px;background:rgba(255,255,255,.7)}.panel-box p{margin:4px 0 0;color:var(--muted);font-size:12px;line-height:1.6}.branch-list{display:grid;gap:10px;margin-top:10px}.branch{padding:12px;border:1px solid var(--line);border-radius:18px;background:#fffdf9}.branch-head{justify-content:space-between;align-items:center;margin-bottom:8px}.branch-head strong{font-size:14px}.hidden{display:none}.empty{padding:12px;border:1px dashed #d7bf9e;border-radius:16px;color:var(--muted);font-size:13px;background:rgba(255,255,255,.55)}
+    .panel-box{padding:13px;border:1px solid #dcc7ab;border-radius:18px;background:rgba(255,255,255,.7)}.panel-box p{margin:4px 0 0;color:var(--muted);font-size:12px;line-height:1.6}.branch-list{display:grid;gap:10px;margin-top:10px}.branch{padding:12px;border:1px solid var(--line);border-radius:18px;background:#fffdf9}.branch-head{justify-content:space-between;align-items:center;margin-bottom:8px}.branch-head strong{font-size:14px}.hidden{display:none}.empty,.list-empty{padding:12px;border:1px dashed #d7bf9e;border-radius:16px;color:var(--muted);font-size:13px;background:rgba(255,255,255,.55)}.list-empty{padding:18px;font-size:14px;line-height:1.7}
     details{margin-top:14px;padding:12px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.55)} summary{cursor:pointer;font-weight:700}
     @media (max-width:980px){.hero,.layout,.steps,.grid2,.grid4{grid-template-columns:1fr}.head,.toolbar,.branch-head{align-items:stretch}}
   </style>
@@ -541,7 +541,15 @@
 
       list.innerHTML = '';
       const rules = Array.isArray(data.rules) ? data.rules : [];
-      (rules.length ? rules : [emptyRule()]).forEach((rule, index) => {
+      if (!rules.length) {
+        const emptyNode = document.createElement('div');
+        emptyNode.className = 'list-empty';
+        emptyNode.textContent = '当前还没有保存任何规则。点击右上角“新增空白规则”后再保存。';
+        list.appendChild(emptyNode);
+        return;
+      }
+
+      rules.forEach((rule, index) => {
         list.appendChild(makeRule(rule, index));
       });
     }
