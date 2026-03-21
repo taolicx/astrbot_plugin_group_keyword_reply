@@ -606,16 +606,6 @@
           });
         }, 250);
       } catch (error) {
-        sendDebugEvent('save_exception', {
-          message:
-            typeof error === 'object' && error !== null
-              ? String(error.message || error)
-              : String(error),
-          stack:
-            typeof error === 'object' && error !== null && error.stack
-              ? String(error.stack)
-              : '',
-        });
         showNotice(
           `保存时前端报错：${
             typeof error === 'object' && error !== null
