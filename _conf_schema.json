@@ -32,7 +32,7 @@
   "rules_json": {
     "description": "规则 JSON",
     "type": "text",
-    "hint": "建议直接使用插件自带的面板配置。规则支持 required_keywords（必备关键词）和 branch_replies（扩展回复）。关键词模式下，消息会先命中必备关键词，再从上到下判断扩展回复；如果没有命中扩展回复，就使用 reply 作为基础回复。reply 可用变量：{message} {sender_id} {sender_name} {group_id} {rule_name}；扩展回复额外支持 {branch_name} {branch_keywords}；正则匹配还支持 {match} {g1} 以及命名分组变量。",
+    "hint": "建议直接使用插件自带的面板配置。规则支持 required_keywords（必备关键词）、branch_replies（扩展回复）和 branch_reply_mode（扩展回复命中方式）。关键词模式下，消息会先命中必备关键词，再判断扩展回复；branch_reply_mode=first 时只回复第一条命中的扩展回复，branch_reply_mode=all 时会把所有命中的扩展回复按顺序发出来；如果没有命中扩展回复，就使用 reply 作为基础回复。reply 可用变量：{message} {sender_id} {sender_name} {group_id} {rule_name}；扩展回复额外支持 {branch_name} {branch_keywords}；正则匹配还支持 {match} {g1} 以及命名分组变量。",
     "default": "[\n  {\n    \"name\": \"售后咨询\",\n    \"enabled\": true,\n    \"groups\": [],\n    \"exclude_keywords\": [],\n    \"match_type\": \"keyword\",\n    \"pattern\": \"订单\",\n    \"required_keywords\": [\"订单\"],\n    \"reply\": \"你是想查订单、催发货还是申请退款？\",\n    \"branch_replies\": [\n      {\n        \"title\": \"发货问题\",\n        \"keywords\": [\"发货\", \"物流\"],\n        \"reply\": \"发货问题请把订单号发给我，我来帮你查。\",\n        \"match_policy\": \"any\"\n      },\n      {\n        \"title\": \"退款问题\",\n        \"keywords\": [\"退款\", \"退货\"],\n        \"reply\": \"退款问题请先提供订单号和退款原因。\",\n        \"match_policy\": \"any\"\n      }\n    ],\n    \"ignore_case\": true,\n    \"continue_after_reply\": false,\n    \"cooldown_seconds\": 0,\n    \"priority\": 1,\n    \"max_reply_count\": 0,\n    \"reply_count\": 0\n  }\n]",
     "editor_mode": true,
     "editor_language": "json",

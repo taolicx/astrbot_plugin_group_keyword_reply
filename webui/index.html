@@ -105,6 +105,7 @@
         </div>
         <div class="keyword-mode">
           <label class="field"><span>必备关键词</span><textarea class="rule-required" placeholder="多个词用逗号分开，例如：订单,售后"></textarea><small>这里的词都要出现，才会继续看下面的扩展回复。</small></label>
+          <label class="field"><span>扩展回复命中方式</span><select class="rule-branch-mode"><option value="first">命中第一条（兼容旧规则）</option><option value="all">命中全部并依次回复</option></select><small>如果一条消息里可能同时命中多个扩展回复，就选第二个。</small></label>
           <label class="field"><span>基础回复（可不填）</span><textarea class="rule-base-reply" placeholder="只命中必备关键词，但没命中下面扩展回复时，回复这段话。"></textarea><small>只想做简单自动回复，也可以只填这里。</small></label>
           <div class="panel-box">
             <div class="branch-head"><div><strong>扩展回复</strong><p>在必备关键词已经命中的前提下，再按不同关键词回复不同内容。</p></div><button class="secondary add-branch" type="button">新增扩展回复</button></div>
@@ -220,6 +221,7 @@
       groups: [],
       exclude_keywords: [],
       match_type: 'keyword',
+      branch_reply_mode: 'first',
       pattern: '',
       required_keywords: [],
       reply: '',
@@ -238,6 +240,7 @@
       groups: [],
       exclude_keywords: [],
       match_type: 'keyword',
+      branch_reply_mode: 'first',
       pattern: '订单',
       required_keywords: ['订单'],
       reply: '你是想查订单、催发货还是申请退款？',
@@ -287,6 +290,10 @@
         groups: split(rule.groups),
         exclude_keywords: split(rule.exclude_keywords),
         match_type: matchType,
+        branch_reply_mode:
+          matchType === 'keyword' && String(rule.branch_reply_mode || '').trim() === 'all'
+            ? 'all'
+            : 'first',
         pattern,
         required_keywords:
           matchType === 'keyword'
@@ -376,6 +383,7 @@
       const type = card.querySelector('.rule-match-type').value;
       const name = card.querySelector('.rule-name').value.trim();
       const required = split(card.querySelector('.rule-required').value);
+      const branchMode = card.querySelector('.rule-branch-mode').value;
       const branchCount = card.querySelectorAll('.branch-list > .branch').length;
 
       card.querySelector('.keyword-mode').classList.toggle('hidden', type !== 'keyword');
@@ -387,8 +395,8 @@
       card.querySelector('.summary').textContent =
         type === 'keyword'
           ? required.length
-            ? `消息里先要出现：${required.join('、')}。然后再判断下面的扩展回复。`
-            : '先命中必备关键词，再从上往下找第一条命中的扩展回复。'
+            ? `消息里先要出现：${required.join('、')}。然后再判断下面的扩展回复${branchMode === 'all' ? '，并把全部命中的回复都发出来。' : '。'}`
+            : `先命中必备关键词，再${branchMode === 'all' ? '把全部命中的扩展回复依次发出来。' : '从上往下找第一条命中的扩展回复。'}`
           : type === 'exact'
             ? '只有消息和这里完全一样时才触发。'
             : '高级方式：使用正则表达式匹配消息。';
@@ -410,6 +418,7 @@
       node.querySelector('.rule-enabled').checked = data.enabled !== false;
       node.querySelector('.rule-match-type').value = data.match_type;
       node.querySelector('.rule-required').value = data.required_keywords.join(', ');
+      node.querySelector('.rule-branch-mode').value = data.branch_reply_mode || 'first';
       node.querySelector('.rule-pattern').value = data.pattern;
       node.querySelector('.rule-base-reply').value = data.reply;
       node.querySelector('.rule-direct-reply').value = data.reply;
@@ -438,6 +447,7 @@
       ['.rule-name', '.rule-required'].forEach((selector) => {
         node.querySelector(selector).addEventListener('input', () => refreshCard(node));
       });
+      node.querySelector('.rule-branch-mode').addEventListener('change', () => refreshCard(node));
 
       refreshCard(node);
       return node;
@@ -462,6 +472,8 @@
         groups: split(card.querySelector('.rule-groups').value),
         exclude_keywords: split(card.querySelector('.rule-excludes').value),
         match_type: type,
+        branch_reply_mode:
+          type === 'keyword' ? card.querySelector('.rule-branch-mode').value : 'first',
         pattern:
           type === 'keyword'
             ? required.join(',')
