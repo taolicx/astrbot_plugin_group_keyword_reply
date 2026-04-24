@@ -52,7 +52,7 @@ class SafeFormatDict(dict[str, str]):
     "GroupKeywordReply",
     "Codex",
     "按规则匹配群消息并自动发送预设回复",
-    "1.4.6",
+    "1.4.7",
     "https://github.com/taolicx/astrbot_plugin_group_keyword_reply",
 )
 class GroupKeywordReplyPlugin(Star):
@@ -65,6 +65,11 @@ class GroupKeywordReplyPlugin(Star):
         self._rules_cache_key = ""
         self._rules_cache: list[ReplyRule] = []
         self._last_trigger_at: dict[str, float] = {}
+        # Reply-count persistence is deliberately kept off the hot reply path:
+        # a synchronous config save before event.stop_event() can delay the user-visible reply.
+        self._pending_reply_increments: dict[str, int] = {}
+        self._count_flush_task: asyncio.Task[None] | None = None
+        self._count_flush_delay_seconds = 2.0
         self._web_runner: web.AppRunner | None = None
         self._web_site: web.TCPSite | None = None
         self._web_lock = asyncio.Lock()
@@ -73,6 +78,7 @@ class GroupKeywordReplyPlugin(Star):
         await self._start_webui_server()
 
     async def terminate(self) -> None:
+        await self._flush_pending_reply_counts_now()
         await self._stop_webui_server()
 
     def _save_plugin_config(self, updates: dict[str, Any]) -> None:
@@ -468,30 +474,124 @@ class GroupKeywordReplyPlugin(Star):
 
         return [item for item in data if isinstance(item, dict)]
 
-    def _save_rule_items(self, items: list[dict[str, Any]]) -> None:
+    def _save_rule_items(
+        self, items: list[dict[str, Any]], *, merge_pending_counts: bool = True
+    ) -> None:
+        if merge_pending_counts:
+            self._merge_pending_reply_counts_into_items(items)
         self._clear_rules_cache()
         self._save_plugin_config(
             {"rules_json": json.dumps(items, ensure_ascii=False, indent=2)}
         )
 
+    def _merge_rule_reply_count_increments(
+        self, items: list[dict[str, Any]], increments: dict[str, int]
+    ) -> bool:
+        if not increments:
+            return False
+
+        changed = False
+        for item in items:
+            name = str(item.get("name") or "").strip()
+            amount = increments.get(name, 0)
+            if amount <= 0:
+                continue
+            try:
+                current = max(int(item.get("reply_count", 0)), 0)
+            except (TypeError, ValueError):
+                current = 0
+            item["reply_count"] = current + amount
+            changed = True
+        return changed
+
+    def _take_pending_reply_increments(self) -> dict[str, int]:
+        increments = {
+            name: amount
+            for name, amount in self._pending_reply_increments.items()
+            if name and amount > 0
+        }
+        self._pending_reply_increments = {}
+        return increments
+
+    def _merge_pending_reply_counts_into_items(self, items: list[dict[str, Any]]) -> bool:
+        return self._merge_rule_reply_count_increments(
+            items, self._take_pending_reply_increments()
+        )
+
+    def _cancel_reply_count_flush_task(self) -> None:
+        task = self._count_flush_task
+        self._count_flush_task = None
+        if task is not None and not task.done():
+            task.cancel()
+
+    def _schedule_reply_count_flush(self) -> None:
+        task = self._count_flush_task
+        if task is not None and not task.done():
+            return
+        self._count_flush_task = asyncio.create_task(
+            self._flush_reply_counts_after_delay()
+        )
+
+    async def _flush_reply_counts_after_delay(self) -> None:
+        try:
+            await asyncio.sleep(self._count_flush_delay_seconds)
+            self._flush_pending_reply_counts_to_config()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning(f"GroupKeywordReply failed to flush reply counts: {exc}")
+        finally:
+            if asyncio.current_task() is self._count_flush_task:
+                self._count_flush_task = None
+
+    def _flush_pending_reply_counts_to_config(self) -> None:
+        increments = self._take_pending_reply_increments()
+        if not increments:
+            return
+
+        items = self._raw_rule_items()
+        if not items:
+            return
+
+        if self._merge_rule_reply_count_increments(items, increments):
+            self._save_rule_items(items, merge_pending_counts=False)
+
+    async def _flush_pending_reply_counts_now(self) -> None:
+        task = self._count_flush_task
+        self._count_flush_task = None
+        if task is not None and not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        try:
+            self._flush_pending_reply_counts_to_config()
+        except Exception as exc:
+            logger.warning(f"GroupKeywordReply failed to flush reply counts: {exc}")
+
     def _increment_rule_reply_count(self, rule_name: str, amount: int = 1) -> None:
         if amount <= 0:
             return
-        items = self._raw_rule_items()
-        changed = False
-        for item in items:
-            if str(item.get("name") or "").strip() == rule_name:
-                try:
-                    current = int(item.get("reply_count", 0))
-                except (TypeError, ValueError):
-                    current = 0
-                item["reply_count"] = current + amount
-                changed = True
+
+        self._pending_reply_increments[rule_name] = (
+            self._pending_reply_increments.get(rule_name, 0) + amount
+        )
+
+        # Keep the in-memory cache accurate immediately so max_reply_count still
+        # gates high-frequency hits before the delayed config flush lands.
+        for rule in self._rules_cache:
+            if rule.name == rule_name:
+                rule.reply_count += amount
                 break
-        if changed:
-            self._save_rule_items(items)
+
+        self._schedule_reply_count_flush()
 
     def _reset_rule_reply_counts(self, rule_name: str | None = None) -> int:
+        self._cancel_reply_count_flush_task()
+        self._pending_reply_increments = {}
+
         items = self._raw_rule_items()
         reset_count = 0
 
@@ -503,7 +603,7 @@ class GroupKeywordReplyPlugin(Star):
             reset_count += 1
 
         if reset_count > 0:
-            self._save_rule_items(items)
+            self._save_rule_items(items, merge_pending_counts=False)
         return reset_count
 
     def _is_reply_limit_reached(self, rule: ReplyRule) -> bool:
